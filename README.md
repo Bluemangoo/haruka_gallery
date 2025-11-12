@@ -32,3 +32,7 @@ pip install -r requirements.txt
 - "/画廊"
 
 直接发命令不带参数会触发帮助信息
+
+## Deployment
+
+记得在 `data/utils/fonts/` 底下装思源黑体，如 `SourceHanSansCN-Bold.otf` （需要多个变种）

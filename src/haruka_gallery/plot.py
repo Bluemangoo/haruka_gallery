@@ -4,7 +4,7 @@ from copy import deepcopy
 
 from PIL import ImageEnhance
 
-from . import gallery_config
+from .config import gallery_config
 from .painter import *
 
 DEFAULT_PADDING = 0

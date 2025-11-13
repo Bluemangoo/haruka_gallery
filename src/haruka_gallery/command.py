@@ -5,7 +5,7 @@ from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.internal.matcher import Matcher
 from nonebot.params import CommandArg
 
-from .gallery import gallery_manager, Gallery, ImageMeta
+from .gallery import gallery_manager, Gallery, ImageMeta, get_random_image
 from .plot import *
 from .utils import get_images_from_context, download_images, CachedFile, download_cache, ArgParser, MessageBuilder
 
@@ -71,7 +71,7 @@ async def reply_help(event: MessageEvent, matcher: type[Matcher]):
         "/gall {add | upload | 添加 | 上传} [force | 强制] [skip | 跳过] [gallery] <图片链接或回复图片> - 添加图片到画廊，使用 force 参数可强制添加重复图片\n"
         "/gall {modify | 修改} <图片ID> [+#标签 | -#标签 | --tag +标签1 | --tags +标签1,-标签2] [-- 备注] - 修改图片的标签和备注\n"
         "/gall {remove | 删除} <图片ID> - 从画廊中删除指定ID的图片\n"
-        "/gall {show | 查看 | 看} <画廊名称> [筛选条件] [数量] - 随机查看画廊中的图片，筛选条件可使用 [#标签 | --tag 标签 | --tags 标签1,标签2] [-- 备注]，数量可使用 xN 或 N 表示 (需要在备注前面)\n"
+        "/gall {show | 查看 | 看} {<画廊名称> | *} [筛选条件] [数量] - 随机查看画廊中的图片，*则从所有画廊，筛选条件可使用 [#标签 | --tag 标签 | --tags 标签1,标签2] [-- 备注]，数量可使用 xN 或 N 表示 (需要在备注前面)\n"
         "/gall {show | 查看 | 看} <图片ID1> <图片ID2> ... - 查看指定ID的图片\n"
         "/gall {show-all | 查看全部 | 看全部} <画廊名称> - 查看画廊中的所有图片缩略图\n"
         "/gall {details | 详情} <图片ID> - 查看指定ID图片的详细信息\n"
@@ -313,19 +313,21 @@ async def random_image(event: MessageEvent, params: str, matcher: type[Matcher])
     if count_str.startswith("x"):
         count_str = count_str[1:]
     count = int(count_str) if count_str.isdigit() else 1
-    gallery: Gallery = gallery_manager.find_gallery(gallery_name)
+    gallery: Gallery | None = None
+    if gallery_name != "*":
+        gallery: Gallery = gallery_manager.find_gallery(gallery_name)
 
-    if not gallery:
-        return await MessageBuilder().text(f"没有找到画廊 {gallery_name}").reply_to(event).send(matcher)
+        if not gallery:
+            return await MessageBuilder().text(f"没有找到画廊 {gallery_name}").reply_to(event).send(matcher)
 
-    images = gallery.get_random_image(tags=tags, comment=comment, count=count)
+    images = get_random_image(gallery, tags=tags, comment=comment, count=count)
     if len(images) == 0:
         return await MessageBuilder().text(f"画廊 {gallery_name} 中没有图片").reply_to(event).send(matcher)
 
     builder = MessageBuilder().reply_to(event)
     # try:
     for image in images:
-            builder.image(image)
+        builder.image(image)
     return await builder.send(matcher)
     # except Exception as e:
     #     return await MessageBuilder().text(f"发送图片时出错: {e}").reply_to(event).send(matcher)

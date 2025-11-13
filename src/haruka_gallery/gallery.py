@@ -128,46 +128,6 @@ class Gallery:
         images = self.list_images()
         return [img for img in images if img.is_same(phash)]
 
-    def get_random_image(self, tags: Optional[list[str]] = None, comment: Optional[str] = None, count: int = 1) -> list[
-        'ImageMeta']:
-        if tags is None:
-            tags = []
-        tag_ids_res = ImageMeta.get_tags(tags)
-        if len(tag_ids_res[1]) > 0:
-            return []
-        tag_ids = tag_ids_res[0]
-        placeholders = ', '.join(['?'] * len(tag_ids))
-        search_tags = f"""
-            and i.id in (
-                select it.image_id
-                from image_tags it
-                where
-                    it.tag_id in ({placeholders})
-                group by
-                    it.image_id
-                having 
-                    count(distinct it.tag_id) = ?
-            )
-            """ if len(tag_ids) > 0 else ""
-        tags_param = (tag_ids + [len(tag_ids)]) if len(tag_ids) > 0 else []
-        search_comment = " and i.comment like ? " if comment is not None else ""
-        comment_param = [f"%{comment}%"] if comment is not None else []
-        cursor = db.execute(f"""
-            select i.*
-            from images i
-            where
-                i.gallery_id = ? {search_comment}
-                {search_tags}
-            order by random()
-            limit ?;
-            """, [self.id] + comment_param + tags_param + [count])
-        rows = cursor.fetchall()
-        images = []
-        for row in rows:
-            image_meta = ImageMeta.from_row(row)
-            images.append(image_meta)
-        return images
-
     def update_name(self):
         db.execute("update galleries set name=? where id=?", (" ".join(self.name), self.id))
         db.commit()
@@ -421,3 +381,48 @@ class ImageMeta:
 
 gallery_manager = GalleryManager()
 gallery_manager.load_galleries()
+
+
+def get_random_image(gallery: Optional[Gallery], tags: Optional[list[str]] = None, comment: Optional[str] = None,
+                 count: int = 1) -> list[ImageMeta]:
+    if tags is None:
+        tags = []
+    tag_ids_res = ImageMeta.get_tags(tags)
+    if len(tag_ids_res[1]) > 0:
+        return []
+    tag_ids = tag_ids_res[0]
+    placeholders = ', '.join(['?'] * len(tag_ids))
+    search_tags = f"""
+        and i.id in (
+            select it.image_id
+            from image_tags it
+            where
+                it.tag_id in ({placeholders})
+            group by
+                it.image_id
+            having 
+                count(distinct it.tag_id) = ?
+        )
+        """ if len(tag_ids) > 0 else ""
+    tags_param = (tag_ids + [len(tag_ids)]) if len(tag_ids) > 0 else []
+    search_comment = " and i.comment like ? " if comment is not None else ""
+    comment_param = [f"%{comment}%"] if comment is not None else []
+    search_gallery = "and i.gallery_id = ?" if gallery is not None else ""
+    gallery_param = [gallery.id] if gallery is not None else []
+    cursor = db.execute(f"""
+        select i.*
+        from images i
+        where
+            1 = 1 
+            {search_gallery}
+            {search_comment}
+            {search_tags}
+        order by random()
+        limit ?;
+        """, gallery_param + comment_param + tags_param + [count])
+    rows = cursor.fetchall()
+    images = []
+    for row in rows:
+        image_meta = ImageMeta.from_row(row)
+        images.append(image_meta)
+    return images

@@ -300,6 +300,7 @@ async def random_image(event: MessageEvent, params: str, matcher: type[Matcher])
     unknown_args = []
     tags = []
 
+    count = 1
     count_str = ""
     comment = None
     while current := args.peek():
@@ -334,9 +335,15 @@ async def random_image(event: MessageEvent, params: str, matcher: type[Matcher])
             if count_str != "":
                 unknown_args.append(count_str)
             count_str = args.pop()
-    if count_str.startswith("x"):
-        count_str = count_str[1:]
-    count = int(count_str) if count_str.isdigit() else 1
+            s = count_str
+
+            if s.startswith("x"):
+                s = s[1:]
+            if not s.isdigit():
+                unknown_args.append(count_str)
+                count_str = ""
+                continue
+            count = int(s)
     gallery: Gallery | None = None
     if gallery_name != "*":
         gallery: Gallery = gallery_manager.find_gallery(gallery_name)

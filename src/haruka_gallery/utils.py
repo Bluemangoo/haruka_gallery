@@ -391,6 +391,8 @@ class MessageBuilder:
         healed_message = Message()
         new_seg_to_meta_map: dict[int, ImageMeta] = {}
 
+        needs_healing = False
+
         for i, seg in enumerate(failed_message):
             if seg.type != 'image':
                 healed_message.append(seg)
@@ -420,40 +422,39 @@ class MessageBuilder:
                 healed_message.append(new_seg)
                 new_seg_to_meta_map[id(new_seg)] = meta
 
-            if not needs_healing:
-                logger.error("捕获 1200，但没有可自愈的图片 (没有 ImageMeta 映射)。")
+        if not needs_healing:
+            logger.error("捕获 1200，但没有可自愈的图片 (没有 ImageMeta 映射)。")
+            return
+
+        try:
+            logger.debug("尝试使用'治愈'后的消息发送...")
+            send_receipt = await matcher.send(healed_message, reply=False)
+            if not send_receipt or 'message_id' not in send_receipt:
+                logger.warning("自愈后发送成功，但未收到 message_id 回执，无法更新 file_id。")
                 return
+        except Exception as e2:
+            logger.error(f"自愈后发送依然失败: {e2}")
+            return
 
-                # --- 2. 重新发送 (用 fallback) ---
-            try:
-                logger.debug("尝试使用'治愈'后的消息发送...")
-                send_receipt = await matcher.send(healed_message, reply=False)
-                if not send_receipt or 'message_id' not in send_receipt:
-                    logger.warning("自愈后发送成功，但未收到 message_id 回执，无法更新 file_id。")
-                    return
-            except Exception as e2:
-                logger.error(f"自愈后发送依然失败: {e2}")
-                return
+        try:
+            message_id = send_receipt['message_id']
+            sent_message_data = await bot.get_msg(message_id=message_id)
+            sent_message = sent_message_data['message']
+        except Exception as e3:
+            logger.error(f"自愈成功，但获取新 file_id 失败: {e3}")
+            return
 
-            try:
-                message_id = send_receipt['message_id']
-                sent_message_data = await bot.get_msg(message_id=message_id)
-                sent_message = sent_message_data['message']
-            except Exception as e3:
-                logger.error(f"自愈成功，但获取新 file_id 失败: {e3}")
-                return
+        if len(healed_message) != len(sent_message):
+            logger.warning("自愈后消息与回执数量不匹配，无法安全更新 file_id。")
+            return
 
-            if len(healed_message) != len(sent_message):
-                logger.warning("自愈后消息与回执数量不匹配，无法安全更新 file_id。")
-                return
+        for j, (healed_segment, sent_message) in enumerate(zip(healed_message, sent_message)):
+            meta = healing_map[j]
 
-            for j, (healed_segment, sent_message) in enumerate(zip(healed_message, sent_message)):
-                meta = healing_map[j]
+            new_file_id = sent_message.get("data").get('file')
 
-                new_file_id = sent_message.get("data").get('file')
-
-                if meta and new_file_id:
-                    meta.update_file_id(new_file_id)
-                    logger.info(f"ImageMeta {meta.id} 自愈成功, 更新 file_id: {new_file_id}")
-                elif meta:
-                    logger.warning(f"ImageMeta {meta.id} 自愈成功, 但未在回执中找到 new_file_id。")
+            if meta and new_file_id:
+                meta.update_file_id(new_file_id)
+                logger.info(f"ImageMeta {meta.id} 自愈成功, 更新 file_id: {new_file_id}")
+            elif meta:
+                logger.warning(f"ImageMeta {meta.id} 自愈成功, 但未在回执中找到 new_file_id。")

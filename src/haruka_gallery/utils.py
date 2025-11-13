@@ -316,6 +316,13 @@ class MessageBuilder:
         if file is None:
             return self
 
+        last_segment = self.message[-1] if self.message else None
+        if last_segment and last_segment.type == "text":
+            text_data = last_segment.data.get("text", "")
+            if text_data.endswith("\n"):
+                text_data = text_data[:-1]
+                last_segment.data["text"] = text_data
+
         segment_to_send: MessageSegment
         meta_to_map: Optional['ImageMeta'] = None
 

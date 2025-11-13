@@ -270,6 +270,10 @@ class ImageMeta:
         self.file_id = file_id
         self.create_time = create_time
 
+    def __repr__(self):
+        return f"<ImageMeta id={self.id} gallery_id={self.gallery.id} comment='{self.comment}' tags={self.tags} " \
+               f"suffix='{self.suffix}' uploader='{self.uploader}' file_id='{self.file_id}' phash='{self.phash}'>"
+
     @classmethod
     def new_unchecked(cls, gallery: Gallery, comment: str, tags: list[str], suffix: str, uploader: str,
                       phash: PhashWrapper, file_id: Optional[str] = None) -> 'ImageMeta':
@@ -380,6 +384,11 @@ class ImageMeta:
         db.execute("update images set comment=? where id=?", (new_comment, self.id))
         db.commit()
         self.comment = new_comment
+
+    def update_file_id(self, new_file_id: Optional[str]):
+        db.execute("update images set file_id=? where id=?", (new_file_id, self.id))
+        db.commit()
+        self.file_id = new_file_id
 
     def drop(self):
         db.execute("delete from images where id=?", (self.id,))

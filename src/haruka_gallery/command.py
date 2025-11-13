@@ -241,7 +241,8 @@ async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):
                                     ImageBox(image=img2, size=gallery_config.repeat_image_show_size,
                                              image_size_mode='fit').set_content_align('c')
                                 else:
-                                    Spacer(w=gallery_config.repeat_image_show_size[0], h=gallery_config.repeat_image_show_size[1])
+                                    Spacer(w=gallery_config.repeat_image_show_size[0],
+                                           h=gallery_config.repeat_image_show_size[1])
                                 TextBox(f"id: {pic.id}", TextStyle(DEFAULT_FONT, 16, BLACK))
         repeat_img = await canvas.get_img()
         file = download_cache.new_file(".png")
@@ -322,12 +323,12 @@ async def random_image(event: MessageEvent, params: str, matcher: type[Matcher])
         return await MessageBuilder().text(f"画廊 {gallery_name} 中没有图片").reply_to(event).send(matcher)
 
     builder = MessageBuilder().reply_to(event)
-    try:
-        for image in images:
+    # try:
+    for image in images:
             builder.image(image)
-        return await builder.send(matcher)
-    except Exception as e:
-        return await MessageBuilder().text(f"发送图片时出错: {e}").reply_to(event).send(matcher)
+    return await builder.send(matcher)
+    # except Exception as e:
+    #     return await MessageBuilder().text(f"发送图片时出错: {e}").reply_to(event).send(matcher)
 
 
 async def show_image(event: MessageEvent, params: str, matcher: type[Matcher]):
@@ -459,6 +460,7 @@ async def modify_image(event: MessageEvent, params: str, matcher: type[Matcher])
     if not modified:
         message_builder.text(f"图片ID {image_id} 未做任何修改。")
     return await message_builder.send(matcher)
+
 
 async def show_details(event: MessageEvent, params: str, matcher: type[Matcher]):
     image_id_str = params.strip()

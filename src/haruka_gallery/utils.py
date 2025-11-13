@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional, Tuple, List, Union
 
 import aiohttp
-from nonebot import get_bot, logger
+from nonebot import get_bot, logger, Bot
 from nonebot.adapters.onebot.v11 import MessageEvent, Message, MessageSegment
 from nonebot.internal.matcher import Matcher
 
@@ -123,7 +123,7 @@ class DownloadCache:
                 try:
                     os.remove(filepath)
                 except Exception as e:
-                    print(f"Failed to remove cached file {filepath}: {e}")
+                    logger.warning(f"Failed to remove cached file {filepath}: {e}")
 
 
 download_cache = DownloadCache()
@@ -295,6 +295,7 @@ class MessageBuilder:
     def __init__(self):
         self.message = Message()
         self._reply_id: Optional[int] = None
+        self._healing_map: list[Optional[ImageMeta]] = []
 
     def text(self, text: Optional[str], newline: bool = True):
         if text is not None:
@@ -302,6 +303,7 @@ class MessageBuilder:
                 self.message.append(MessageSegment.text(text + "\n"))
             else:
                 self.message.append(MessageSegment.text(text))
+            self._healing_map.append(None)
         return self
 
     def texts(self, texts: Optional[List[str]], newline: bool = True):
@@ -311,22 +313,35 @@ class MessageBuilder:
         return self
 
     def image(self, file: Optional[Union[str, bytes, io.BytesIO, Path, ImageMeta]]):
-        if file is not None:
-            if isinstance(file, ImageMeta):
-                path = file.get_image_path()
-                if os.path.exists(path):
-                    if file.file_id:
-                        self.image(file.file_id)
-                    elif file.suffix == ".gif":
-                        file_content = Path(path).read_bytes()
-                        self.image(file_content)
-                    else:
-                        self.image(Path(path))
-                else:
-                    logger.warning(f"图片文件不存在: {path}，已清理")
-                    file.drop()
+        if file is None:
+            return self
+
+        segment_to_send: MessageSegment
+        meta_to_map: Optional['ImageMeta'] = None
+
+        if isinstance(file, ImageMeta):
+            meta_to_map = file
+            path_str = file.get_image_path()
+            path_obj = Path(path_str)
+            if not path_obj.exists():
+                logger.warning(f"图片文件不存在: {path_str}，已清理")
+                file.drop()
+                return self
+
+            if file.file_id:
+                segment_to_send = MessageSegment.image(file=file.file_id)
+            elif file.suffix == ".gif":
+                file_content = path_obj.read_bytes()
+                segment_to_send = MessageSegment.image(file=file_content)
             else:
-                self.message.append(MessageSegment.image(file=file))
+                segment_to_send = MessageSegment.image(file=path_obj)
+        else:
+            segment_to_send = MessageSegment.image(file=file)
+
+        if segment_to_send:
+            self.message.append(segment_to_send)
+            self._healing_map.append(meta_to_map)
+
         return self
 
     def reply_to(self, message_id_or_event: Union[int, str, MessageEvent]):
@@ -335,14 +350,13 @@ class MessageBuilder:
         self._reply_id = int(message_id_or_event)
         return self
 
-    async def send(self,
-                   matcher: Matcher):
+    async def send(self, matcher: Matcher, bot: Optional[Bot] = None):
         if not self.message and not self._reply_id:
-            print("MessageBuilder: 消息为空，取消发送。")
+            logger.warning("MessageBuilder: 消息为空，取消发送。")
             return
 
-        # 复制一份，避免污染 builder 实例
         final_message = self.message.copy()
+        healing_map = self._healing_map.copy()
 
         if final_message:
             last_segment = final_message[-1]
@@ -356,8 +370,90 @@ class MessageBuilder:
 
         if reply_id_to_use is not None:
             final_message.insert(0, MessageSegment.reply(reply_id_to_use))
+            healing_map.insert(0, None)
 
         try:
             await matcher.send(final_message)
         except Exception as e:
-            print(f"MessageBuilder 发送失败: {e}")
+            if '1200' in str(e):
+                logger.warning(f"发送失败 (retcode={1200})，缓存失效。启动自愈...")
+                bot = bot or get_bot()
+                await self._handle_healing(final_message, healing_map, matcher, bot)
+            else:
+                logger.error(f"MessageBuilder 发送失败 (非 1200): {e}")
+                raise e
+
+    async def _handle_healing(self, failed_message: Message, healing_map: list[Optional[ImageMeta]], matcher: Matcher,
+                              bot: Bot):
+        """
+        私有方法：处理缓存失效后的重建、重发、更新逻辑
+        """
+        healed_message = Message()
+        new_seg_to_meta_map: dict[int, ImageMeta] = {}
+
+        for i, seg in enumerate(failed_message):
+            if seg.type != 'image':
+                healed_message.append(seg)
+                continue
+
+            meta: Optional['ImageMeta'] = healing_map[i]
+
+            if not meta:
+                healed_message.append(seg)
+                continue
+
+            needs_healing = True
+            logger.debug(f"ImageMeta {meta.id} (file_id: {meta.file_id}) 失效, 换用本地路径。")
+            path_str = meta.get_image_path()
+            path_obj = Path(path_str)
+
+            new_seg: MessageSegment | None = None
+            if not path_obj.exists():
+                logger.error(f"自愈失败：ImageMeta {meta.id} 本地文件已丢失: {path_str}")
+                meta.drop()
+            elif meta.suffix == ".gif":
+                new_seg = MessageSegment.image(file=path_obj.read_bytes())
+            else:
+                new_seg = MessageSegment.image(file=path_obj)
+
+            if new_seg:
+                healed_message.append(new_seg)
+                new_seg_to_meta_map[id(new_seg)] = meta
+
+            if not needs_healing:
+                logger.error("捕获 1200，但没有可自愈的图片 (没有 ImageMeta 映射)。")
+                return
+
+                # --- 2. 重新发送 (用 fallback) ---
+            try:
+                logger.debug("尝试使用'治愈'后的消息发送...")
+                send_receipt = await matcher.send(healed_message, reply=False)
+                if not send_receipt or 'message_id' not in send_receipt:
+                    logger.warning("自愈后发送成功，但未收到 message_id 回执，无法更新 file_id。")
+                    return
+            except Exception as e2:
+                logger.error(f"自愈后发送依然失败: {e2}")
+                return
+
+            try:
+                message_id = send_receipt['message_id']
+                sent_message_data = await bot.get_msg(message_id=message_id)
+                sent_message = sent_message_data['message']
+            except Exception as e3:
+                logger.error(f"自愈成功，但获取新 file_id 失败: {e3}")
+                return
+
+            if len(healed_message) != len(sent_message):
+                logger.warning("自愈后消息与回执数量不匹配，无法安全更新 file_id。")
+                return
+
+            for j, (healed_segment, sent_message) in enumerate(zip(healed_message, sent_message)):
+                meta = healing_map[j]
+
+                new_file_id = sent_message.get("data").get('file')
+
+                if meta and new_file_id:
+                    meta.update_file_id(new_file_id)
+                    logger.info(f"ImageMeta {meta.id} 自愈成功, 更新 file_id: {new_file_id}")
+                elif meta:
+                    logger.warning(f"ImageMeta {meta.id} 自愈成功, 但未在回执中找到 new_file_id。")

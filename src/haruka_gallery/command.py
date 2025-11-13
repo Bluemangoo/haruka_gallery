@@ -17,48 +17,60 @@ upload_command = on_command("upload", force_whitespace=True, priority=5)
 
 @gall_command.handle()
 async def _(event: MessageEvent, args=CommandArg()):
-    text: str = args.extract_plain_text().strip()
-    subcommand, *params = text.split(" ", 1)
-    params = params[0] if params else ""
-    if subcommand == "add" or subcommand == "upload" or subcommand == "添加" or subcommand == "上传":
-        return await add_image(event, params, gall_command)
-    if subcommand == "remove" or subcommand == "删除":
-        return await remove_image(event, params, gall_command)
-    if subcommand == "modify" or subcommand == "修改":
-        return await modify_image(event, params, gall_command)
-    if subcommand == "show" or subcommand == "查看" or subcommand == "看":
-        return await random_image(event, params, gall_command)
-    if subcommand == "show-all" or subcommand == "查看全部" or subcommand == "看全部":
-        return await show_all(event, params, gall_command)
-    if subcommand == "details" or subcommand == "详情":
-        return await show_details(event, params, gall_command)
-    if subcommand == "add-gallery" or subcommand == "创建画廊":
-        return await add_gallery(event, params, gall_command)
-    if subcommand == "modify-gallery" or subcommand == "修改画廊":
-        return await modify_gallery(event, params, gall_command)
-    if subcommand == "remove-gallery" or subcommand == "删除画廊":
-        return await remove_gallery(event, params, gall_command)
-    if subcommand == "clear" or subcommand == "清空画廊":
-        return await clear_gallery(event, params, gall_command)
-    return await reply_help(event, gall_command)
+    try:
+        text: str = args.extract_plain_text().strip()
+        subcommand, *params = text.split(" ", 1)
+        params = params[0] if params else ""
+        if subcommand == "add" or subcommand == "upload" or subcommand == "添加" or subcommand == "上传":
+            return await add_image(event, params, gall_command)
+        if subcommand == "remove" or subcommand == "删除":
+            return await remove_image(event, params, gall_command)
+        if subcommand == "modify" or subcommand == "修改":
+            return await modify_image(event, params, gall_command)
+        if subcommand == "show" or subcommand == "查看" or subcommand == "看":
+            return await random_image(event, params, gall_command)
+        if subcommand == "show-all" or subcommand == "查看全部" or subcommand == "看全部":
+            return await show_all(event, params, gall_command)
+        if subcommand == "details" or subcommand == "详情":
+            return await show_details(event, params, gall_command)
+        if subcommand == "add-gallery" or subcommand == "创建画廊":
+            return await add_gallery(event, params, gall_command)
+        if subcommand == "modify-gallery" or subcommand == "修改画廊":
+            return await modify_gallery(event, params, gall_command)
+        if subcommand == "remove-gallery" or subcommand == "删除画廊":
+            return await remove_gallery(event, params, gall_command)
+        if subcommand == "clear" or subcommand == "清空画廊":
+            return await clear_gallery(event, params, gall_command)
+        return await reply_help(event, gall_command)
+    except Exception as e:
+        return await MessageBuilder().text(f"命令执行出错：{str(e)}").reply_to(event).send(gall_command)
 
 
 @kan_command.handle()
 async def _(event: MessageEvent, args=CommandArg()):
-    text: str = args.extract_plain_text().strip()
-    await random_image(event, text, kan_command)
+    try:
+        text: str = args.extract_plain_text().strip()
+        await random_image(event, text, kan_command)
+    except Exception as e:
+        return await MessageBuilder().text(f"命令执行出错：{str(e)}").reply_to(event).send(kan_command)
 
 
 @shangchuan_command.handle()
 async def _(event: MessageEvent, args=CommandArg()):
-    text: str = args.extract_plain_text().strip()
-    await add_image(event, text, shangchuan_command)
+    try:
+        text: str = args.extract_plain_text().strip()
+        await add_image(event, text, shangchuan_command)
+    except Exception as e:
+        return await MessageBuilder().text(f"命令执行出错：{str(e)}").reply_to(event).send(shangchuan_command)
 
 
 @upload_command.handle()
 async def _(event: MessageEvent, args=CommandArg()):
-    text: str = args.extract_plain_text().strip()
-    await add_image(event, text, upload_command)
+    try:
+        text: str = args.extract_plain_text().strip()
+        await add_image(event, text, upload_command)
+    except Exception as e:
+        return await MessageBuilder().text(f"命令执行出错：{str(e)}").reply_to(event).send(upload_command)
 
 
 async def reply_help(event: MessageEvent, matcher: type[Matcher]):
@@ -167,6 +179,7 @@ async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):
     all_image_files = [img for img in image_files]
 
     tags = []
+    unknown_args = []
     comment = ""
     while current := args.peek():
         if current == "--tag":
@@ -176,7 +189,8 @@ async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):
                 tags.append(tag)
                 continue
             else:
-                return await reply_help(event, matcher)
+                unknown_args.append(current)
+                unknown_args.append(tag)
         elif current == "--tags":
             args.pop()
             tag_str = args.pop()
@@ -184,7 +198,8 @@ async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):
                 tags.extend(re.split(r"[，,;]+", tag_str))
                 continue
             else:
-                return await reply_help(event, matcher)
+                unknown_args.append(current)
+                unknown_args.append(tag_str)
         elif current == "--":
             args.pop()
             comment = args.pop_all()
@@ -195,6 +210,8 @@ async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):
                 tags.append(tag)
                 continue
         else:
+            if comment != "":
+                unknown_args.append(comment)
             comment = args.pop()
 
     existing_images: list[Tuple[CachedFile, list[ImageMeta]]] = []
@@ -212,6 +229,8 @@ async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):
                                     file_id=image.extra.get("file_id"))
 
     message_builder = MessageBuilder().reply_to(event)
+    if len(unknown_args) > 0:
+        message_builder.text(f"未知参数：{' '.join(unknown_args)}。\n")
     if len(all_image_files) > 0:
         message_builder.text(f"成功添加 {len(image_files)}/{len(all_image_files)} 张图片到画廊 {gallery_name}。")
     if len(tags) > 0:
@@ -278,8 +297,9 @@ async def random_image(event: MessageEvent, params: str, matcher: type[Matcher])
 
     if gallery_name.isdigit():
         return await show_image(event, params, matcher)
-
+    unknown_args = []
     tags = []
+
     count_str = ""
     comment = None
     while current := args.peek():
@@ -290,7 +310,8 @@ async def random_image(event: MessageEvent, params: str, matcher: type[Matcher])
                 tags.append(tag)
                 continue
             else:
-                return await reply_help(event, matcher)
+                unknown_args.append(current)
+                unknown_args.append(tag)
         elif current == "--tags":
             args.pop()
             tag_str = args.pop()
@@ -298,7 +319,8 @@ async def random_image(event: MessageEvent, params: str, matcher: type[Matcher])
                 tags.extend(re.split(r"[，,;]+", tag_str))
                 continue
             else:
-                return await reply_help(event, matcher)
+                unknown_args.append(current)
+                unknown_args.append(tag_str)
         elif current == "--":
             args.pop()
             comment = args.pop_all()
@@ -309,6 +331,8 @@ async def random_image(event: MessageEvent, params: str, matcher: type[Matcher])
                 tags.append(tag)
                 continue
         else:
+            if count_str != "":
+                unknown_args.append(count_str)
             count_str = args.pop()
     if count_str.startswith("x"):
         count_str = count_str[1:]
@@ -325,12 +349,11 @@ async def random_image(event: MessageEvent, params: str, matcher: type[Matcher])
         return await MessageBuilder().text(f"画廊 {gallery_name} 中没有图片").reply_to(event).send(matcher)
 
     builder = MessageBuilder().reply_to(event)
-    # try:
+    if len(unknown_args) > 0:
+        builder.text(f"未知参数：{' '.join(unknown_args)}。\n")
     for image in images:
         builder.image(image)
     return await builder.send(matcher)
-    # except Exception as e:
-    #     return await MessageBuilder().text(f"发送图片时出错: {e}").reply_to(event).send(matcher)
 
 
 async def show_image(event: MessageEvent, params: str, matcher: type[Matcher]):

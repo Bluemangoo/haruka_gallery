@@ -146,6 +146,11 @@ async def get_images_from_context(event: MessageEvent):
             if 'url' in message_data:
                 images.append((message_data['url'], message_data.get('file')))
         elif message_type == "forward":
+            if content := message_data.get("content"):
+                if isinstance(content, list):
+                    for item in content:
+                        messages.extend(item.get("message", []))
+                    continue
             result = await bot.call_api('get_forward_msg', **{'id': str(message_data['id'])})
             for item in result['messages']:
                 messages.extend(item['message'])

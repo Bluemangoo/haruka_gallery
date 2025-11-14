@@ -36,3 +36,11 @@ pip install -r requirements.txt
 ## Deployment
 
 记得在 `data/utils/fonts/` 底下装思源黑体，如 `SourceHanSansCN-Bold.otf` （需要多个变种）
+
+## Manual Import
+
+手动导入请运行 `import_from_file.py`，参数：
+
+```shell
+python import_from_file.py <proj_root> <gallery_name> <file_dir>
+```

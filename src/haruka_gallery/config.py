@@ -7,6 +7,7 @@ _cache_dir: Path = Path("cache/haruka_gallery")
 _config_dir: Path = Path("config/haruka_gallery")
 _data_dir: Path = Path("data/haruka_gallery")
 
+
 class Config(BaseModel):
     size_limit_mb: int = 10
     thumbnail_size: tuple[int, int] = (64, 64)
@@ -28,4 +29,16 @@ class Config(BaseModel):
         """插件数据目录"""
         return _data_dir
 
-gallery_config: Config = get_plugin_config(Config)
+
+try:
+    gallery_config: Config = get_plugin_config(Config)
+except Exception:
+    import sys
+
+    arg_offset = 1 if sys.argv[0].endswith('python.exe') or sys.argv[0].endswith('python3.exe') or sys.argv[0].endswith(
+        'python') else 0
+    print(f"bot 初始化失败，猜测正在运行脚本，采用 cwd {sys.argv[arg_offset + 1]} 作为根目录")
+    _cache_dir = Path(sys.argv[arg_offset + 1]) / "cache" / "haruka_gallery"
+    _config_dir = Path(sys.argv[arg_offset + 1]) / "config" / "haruka_gallery"
+    _data_dir = Path(sys.argv[arg_offset + 1]) / "data" / "haruka_gallery"
+    gallery_config = Config()

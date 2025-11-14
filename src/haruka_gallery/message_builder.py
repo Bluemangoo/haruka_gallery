@@ -14,6 +14,7 @@ class MessageBuilder:
         self.message = Message()
         self._reply_id: Optional[int] = None
         self._healing_map: list[Optional[ImageMeta]] = []
+        self.have_non_file_id_image = False
 
     def text(self, text: Optional[str], newline: bool = True):
         if text is not None:
@@ -55,11 +56,13 @@ class MessageBuilder:
 
             if file.file_id:
                 segment_to_send = MessageSegment.image(file=file.file_id)
-            elif file.suffix == ".gif":
-                file_content = path_obj.read_bytes()
-                segment_to_send = MessageSegment.image(file=file_content)
             else:
-                segment_to_send = MessageSegment.image(file=path_obj)
+                self.have_non_file_id_image = True
+                if file.suffix == ".gif":
+                    file_content = path_obj.read_bytes()
+                    segment_to_send = MessageSegment.image(file=file_content)
+                else:
+                    segment_to_send = MessageSegment.image(file=path_obj)
         else:
             segment_to_send = MessageSegment.image(file=file)
 
@@ -98,7 +101,9 @@ class MessageBuilder:
             healing_map.insert(0, None)
 
         try:
-            await matcher.send(final_message)
+            send_receipt = await matcher.send(final_message)
+            if self.have_non_file_id_image:
+                await self.update_file_id(send_receipt, bot or get_bot(), final_message, healing_map)
         except Exception as e:
             if '1200' in str(e):
                 logger.warning(f"发送失败 (retcode={1200})，缓存失效。启动自愈...")
@@ -161,6 +166,9 @@ class MessageBuilder:
             logger.error(f"自愈后发送依然失败: {e2}")
             return
 
+        await self.update_file_id(send_receipt, bot, healed_message, healing_map)
+
+    async def update_file_id(self, send_receipt, bot: Bot, message: Message, healing_map: list[Optional[ImageMeta]]):
         try:
             message_id = send_receipt['message_id']
             sent_message_data = await bot.get_msg(message_id=message_id)
@@ -169,11 +177,11 @@ class MessageBuilder:
             logger.error(f"自愈成功，但获取新 file_id 失败: {e3}")
             return
 
-        if len(healed_message) != len(sent_message):
+        if len(message) != len(sent_message):
             logger.warning("自愈后消息与回执数量不匹配，无法安全更新 file_id。")
             return
 
-        for j, (healed_segment, sent_message) in enumerate(zip(healed_message, sent_message)):
+        for j, sent_message in enumerate(sent_message):
             meta = healing_map[j]
 
             new_file_id = sent_message.get("data").get('file')

@@ -1,16 +1,13 @@
 import asyncio
-import io
 import json
 import mimetypes
 import os
 from datetime import datetime
-from pathlib import Path
-from typing import Optional, Tuple, List, Union
+from typing import Optional, Tuple, List
 
 import aiohttp
-from nonebot import get_bot, logger, Bot
-from nonebot.adapters.onebot.v11 import MessageEvent, Message, MessageSegment
-from nonebot.internal.matcher import Matcher
+from nonebot import get_bot, logger
+from nonebot.adapters.onebot.v11 import MessageEvent
 
 from .config import gallery_config
 

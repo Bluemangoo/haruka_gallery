@@ -5,3 +5,4 @@ if is_main_process():
     nonebot.init()
 
     from .command import *
+    from .task import *

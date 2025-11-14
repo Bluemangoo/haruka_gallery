@@ -7,7 +7,8 @@ from nonebot.params import CommandArg
 
 from .gallery import gallery_manager, Gallery, ImageMeta, get_random_image
 from .plot import *
-from .utils import get_images_from_context, download_images, CachedFile, download_cache, ArgParser, MessageBuilder
+from .utils import get_images_from_context, download_images, CachedFile, file_cache, ArgParser
+from .message_builder import MessageBuilder
 
 gall_command = on_command("gallery", aliases={"画廊", "gall"}, force_whitespace=True, priority=5)
 kan_command = on_command("看", priority=8)
@@ -264,7 +265,7 @@ async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):
                                            h=gallery_config.repeat_image_show_size[1])
                                 TextBox(f"id: {pic.id}", TextStyle(DEFAULT_FONT, 16, BLACK))
         repeat_img = await canvas.get_img()
-        file = download_cache.new_file(".png")
+        file = file_cache.new_file(".png")
         repeat_img.save(file.local_path)
         message_builder.image(file.local_path)
     await message_builder.send(matcher)
@@ -417,16 +418,16 @@ async def show_all(event: MessageEvent, params: str, matcher: type[Matcher]):
     with Canvas(bg=FillBg((230, 240, 255, 255))).set_padding(8) as canvas:
         with Grid(row_count=int(math.sqrt(len(images))), hsep=4, vsep=4):
             for image in images:
-                image.ensure_thumb()
+                thumb_file = image.get_thumb()
                 with VSplit().set_padding(0).set_sep(2).set_content_align('c').set_item_align('c'):
-                    if image.thumb_path and os.path.exists(image.thumb_path):
-                        ImageBox(image=Image.open(image.thumb_path), size=gallery_config.thumbnail_size,
+                    if thumb_file:
+                        ImageBox(image=Image.open(thumb_file.local_path), size=gallery_config.thumbnail_size,
                                  image_size_mode='fit').set_content_align('c')
                     else:
                         Spacer(w=gallery_config.thumbnail_size[0], h=gallery_config.thumbnail_size[1])
                     TextBox(f"id: {image.id}", TextStyle(DEFAULT_FONT, 12, BLACK))
     canvas_image = await canvas.get_img()
-    file = download_cache.new_file(".png")
+    file = file_cache.new_file(".png")
     canvas_image.save(file.local_path)
     message_builder.image(file.local_path)
     return await message_builder.send(matcher)

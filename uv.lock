@@ -133,6 +133,18 @@ wheels = [
 ]
 
 [[package]]
+name = "apscheduler"
+version = "3.11.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "tzlocal" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d0/81/192db4f8471de5bc1f0d098783decffb1e6e69c4f8b4bc6711094691950b/apscheduler-3.11.1.tar.gz", hash = "sha256:0db77af6400c84d1747fe98a04b8b58f0080c77d11d338c4f507a9752880f221", size = 108044, upload-time = "2025-10-31T18:55:42.819Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/58/9f/d3c76f76c73fcc959d28e9def45b8b1cc3d7722660c5003b19c1022fd7f4/apscheduler-3.11.1-py3-none-any.whl", hash = "sha256:6162cb5683cb09923654fa9bdd3130c4be4bfda6ad8990971c9597ecd52965d2", size = 64278, upload-time = "2025-10-31T18:55:41.186Z" },
+]
+
+[[package]]
 name = "asgiref"
 version = "3.10.0"
 source = { registry = "https://pypi.org/simple" }
@@ -292,6 +304,7 @@ dependencies = [
     { name = "image" },
     { name = "imagehash" },
     { name = "nonebot-adapter-onebot" },
+    { name = "nonebot-plugin-apscheduler" },
     { name = "nonebot2" },
     { name = "numpy" },
     { name = "pilmoji" },
@@ -304,6 +317,7 @@ requires-dist = [
     { name = "image", specifier = ">=1.5.33" },
     { name = "imagehash", specifier = ">=4.3.2" },
     { name = "nonebot-adapter-onebot", specifier = ">=2.4.6" },
+    { name = "nonebot-plugin-apscheduler", specifier = ">=0.5.0" },
     { name = "nonebot2", specifier = ">=2.4.4,<3.0.0" },
     { name = "numpy", specifier = ">=2.3.4" },
     { name = "pilmoji", specifier = ">=2.0.4" },
@@ -514,6 +528,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/11/97/504e898471c2ba18a5c0f8db99ed81e755f6b3cbf647ce804485d8b8f77e/nonebot_adapter_onebot-2.4.6.tar.gz", hash = "sha256:e33c93649ad11b320d8e9ff213635f29b23b4d0413c9158bd031c513c2f8f701", size = 40107, upload-time = "2024-10-24T07:34:57.623Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/60/a8/219fb6327b3395b9b05d2e46383795825d079d1c024660304037d3dc0448/nonebot_adapter_onebot-2.4.6-py3-none-any.whl", hash = "sha256:b1ec7023fd83d731f63b513217327a57d12893a261944934b9195f79173791ad", size = 49626, upload-time = "2024-10-24T07:34:56.115Z" },
+]
+
+[[package]]
+name = "nonebot-plugin-apscheduler"
+version = "0.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "apscheduler" },
+    { name = "nonebot2" },
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d6/53/019bfea58c506c0166d8ef77959fd8676019469d0d3d8e135ae8f1a4b772/nonebot_plugin_apscheduler-0.5.0.tar.gz", hash = "sha256:6c0230e99765f275dc83d6639ff33bd6f71203fa10cd1b8a204b0f95530cda86", size = 3816, upload-time = "2024-06-28T13:17:10.57Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fb/f4/8a3334dcd91e368d2f4e2b21f4805ac70b5dd8a1f9dac94fea5269e82bd3/nonebot_plugin_apscheduler-0.5.0-py3-none-any.whl", hash = "sha256:8b99b5ee60c4bc195d4df2fd27dab3d6963691e3332f6cee31a06eb4277c307f", size = 4307, upload-time = "2024-06-28T13:17:09.593Z" },
 ]
 
 [[package]]
@@ -1093,6 +1121,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/95/32/1a225d6164441be760d75c2c42e2780dc0873fe382da3e98a2e1e48361e5/tzdata-2025.2.tar.gz", hash = "sha256:b60a638fcc0daffadf82fe0f57e53d06bdec2f36c4df66280ae79bce6bd6f2b9", size = 196380, upload-time = "2025-03-23T13:54:43.652Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5c/23/c7abc0ca0a1526a0774eca151daeb8de62ec457e77262b66b359c3c7679e/tzdata-2025.2-py2.py3-none-any.whl", hash = "sha256:1a403fada01ff9221ca8044d701868fa132215d84beb92242d9acd2147f667a8", size = 347839, upload-time = "2025-03-23T13:54:41.845Z" },
+]
+
+[[package]]
+name = "tzlocal"
+version = "5.3.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "tzdata", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8b/2e/c14812d3d4d9cd1773c6be938f89e5735a1f11a9f184ac3639b93cef35d5/tzlocal-5.3.1.tar.gz", hash = "sha256:cceffc7edecefea1f595541dbd6e990cb1ea3d19bf01b2809f362a03dd7921fd", size = 30761, upload-time = "2025-03-05T21:17:41.549Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c2/14/e2a54fabd4f08cd7af1c07030603c3356b74da07f7cc056e600436edfa17/tzlocal-5.3.1-py3-none-any.whl", hash = "sha256:eb1a66c3ef5847adf7a834f1be0800581b683b5608e74f86ecbcef8ab91bb85d", size = 18026, upload-time = "2025-03-05T21:17:39.857Z" },
 ]
 
 [[package]]

@@ -1,4 +1,3 @@
-import os
 import shutil
 from os import PathLike
 from pathlib import Path
@@ -8,6 +7,7 @@ import imagehash
 from PIL import Image
 from nonebot import logger
 
+from .utils import file_cache, CachedFile
 from .config import gallery_config
 from .data import db
 
@@ -206,7 +206,6 @@ class PhashWrapper:
 
 
 class ImageMeta:
-    thumb_path: Optional[Path] = None
     id: int
     gallery: Gallery
     comment: str
@@ -373,18 +372,21 @@ class ImageMeta:
         distance = self.phash - other
         return distance <= threshold
 
-    def ensure_thumb(self):
+    def get_thumb(self) -> Optional[CachedFile]:
+        ext = ".jpg"
+        filename = f"{self.id}_thumb"
+        thumb = file_cache.get_file(filename + ext, try_load=True)
+        if thumb:
+            return thumb.renewed().update_timeout(24 * 3600)
         try:
-            if self.thumb_path is None:
-                self.thumb_path = gallery_config.cache_dir / "thumbnails" / f"{self.id}_thumb.jpg"
-            self.thumb_path.parent.mkdir(parents=True, exist_ok=True)
-            if not os.path.exists(self.thumb_path):
-                img = Image.open(self.get_image_path()).convert('RGB')
-                img.thumbnail(gallery_config.thumbnail_size)
-                img.save(self.thumb_path, format='JPEG', optimize=True, quality=85)
+            thumb = file_cache.new_file(filename_without_ext=filename, ext=ext, timeout=24 * 3600)
+            img = Image.open(self.get_image_path()).convert('RGB')
+            img.thumbnail(gallery_config.thumbnail_size)
+            img.save(thumb.local_path, format='JPEG', optimize=True, quality=85)
+            return thumb
         except Exception as e:
             logger.warning(f'生成画廊图片 {self.id} 缩略图失败: {e}')
-            self.thumb_path = None
+            return None
 
 
 gallery_manager = GalleryManager()

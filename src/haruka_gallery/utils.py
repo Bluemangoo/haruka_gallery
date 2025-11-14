@@ -34,17 +34,18 @@ class CachedFile:
     used: bool
     created_at: datetime
     extra: dict
+    timeout: int
 
-    def __init__(self, url: str, local_path: str):
+    def __init__(self, url: str, local_path: str, timeout: int = 3600):
         self.url = url
         self.local_path = local_path
         self.used = False
-        # current time
         self.created_at = datetime.now()
         self.extra = {}
+        self.timeout = timeout
 
     def __repr__(self):
-        return f"<CachedFile url={self.url} local_path={self.local_path} used={self.used} created_at={self.created_at} extra={self.extra}>"
+        return f"<CachedFile url={self.url} local_path={self.local_path} used={self.used} created_at={self.created_at} extra={self.extra} timeout={self.timeout}>"
 
     def mark_used(self):
         self.used = True
@@ -59,8 +60,12 @@ class CachedFile:
             self.extra.update(extra)
         return self
 
+    def update_timeout(self, timeout: int):
+        self.timeout = timeout
+        return self
 
-class DownloadCache:
+
+class FileCache:
     files: dict[str, CachedFile]
 
     def __init__(self):
@@ -88,10 +93,20 @@ class DownloadCache:
             name = str(uuid.uuid4()) + ext
         return name
 
-    def new_file(self, ext: str) -> CachedFile:
-        filename = self._random_filename(ext)
+    def new_file(self, ext: str, filename_without_ext: Optional[str] = None, timeout=3600) -> CachedFile:
+        filename = (filename_without_ext + ext) if filename_without_ext else self._random_filename(ext)
         filepath = os.path.join(gallery_config.cache_dir, filename)
-        file = CachedFile(filename, filepath)
+        file = CachedFile(filename, filepath, timeout=timeout)
+        self.files[filename] = file
+        return file
+
+    def get_file(self, url: str, try_load: bool = False) -> Optional[CachedFile]:
+        file = self.files.get(url)
+        if try_load and not file:
+            filepath = os.path.join(gallery_config.cache_dir, url)
+            if os.path.exists(filepath):
+                file = CachedFile(url, filepath)
+                self.files[url] = file
         return file
 
     async def download(self, url: str, extra: dict | None = None) -> CachedFile:
@@ -115,18 +130,19 @@ class DownloadCache:
     async def prune(self):
         current_time = datetime.now()
         self.files = {url: file for url, file in self.files.items() if
-                      not file.used or (current_time - file.created_at).total_seconds() < 3600}
+                      not file.used or (current_time - file.created_at).total_seconds() < file.timeout}
         keep_files = {file.local_path for file in self.files.values()}
         for filename in os.listdir(gallery_config.cache_dir):
             filepath = os.path.join(gallery_config.cache_dir, filename)
             if filepath not in keep_files:
                 try:
                     os.remove(filepath)
+                    logger.debug(f"Removed cached file: {filepath}")
                 except Exception as e:
                     logger.warning(f"Failed to remove cached file {filepath}: {e}")
 
 
-download_cache = DownloadCache()
+file_cache = FileCache()
 
 
 async def get_images_from_context(event: MessageEvent):
@@ -172,7 +188,7 @@ async def get_images_from_context(event: MessageEvent):
 
 
 async def download_images(image_urls: list[str | Tuple[str, Optional[str]]]) -> list[CachedFile]:
-    tasks = [download_cache.download(url, {"file_id": file_id}) for url, file_id in image_urls]
+    tasks = [file_cache.download(url, {"file_id": file_id}) for url, file_id in image_urls]
     downloaded_files = await asyncio.gather(*tasks)
     return downloaded_files
 
@@ -286,182 +302,3 @@ class ArgParser:
         if rng:
             cur = self._s[rng[0]:rng[1]]
         return f"<ArgParser current={cur!r} remaining={self.remaining_count()}>"
-
-
-from .gallery import ImageMeta
-
-
-class MessageBuilder:
-    def __init__(self):
-        self.message = Message()
-        self._reply_id: Optional[int] = None
-        self._healing_map: list[Optional[ImageMeta]] = []
-
-    def text(self, text: Optional[str], newline: bool = True):
-        if text is not None:
-            if newline:
-                self.message.append(MessageSegment.text(text + "\n"))
-            else:
-                self.message.append(MessageSegment.text(text))
-            self._healing_map.append(None)
-        return self
-
-    def texts(self, texts: Optional[List[str]], newline: bool = True):
-        if texts is not None:
-            for text in texts:
-                self.text(text, newline=newline)
-        return self
-
-    def image(self, file: Optional[Union[str, bytes, io.BytesIO, Path, ImageMeta]]):
-        if file is None:
-            return self
-
-        last_segment = self.message[-1] if self.message else None
-        if last_segment and last_segment.type == "text":
-            text_data = last_segment.data.get("text", "")
-            if text_data.endswith("\n"):
-                text_data = text_data[:-1]
-                last_segment.data["text"] = text_data
-
-        segment_to_send: MessageSegment
-        meta_to_map: Optional['ImageMeta'] = None
-
-        if isinstance(file, ImageMeta):
-            meta_to_map = file
-            path_str = file.get_image_path()
-            path_obj = Path(path_str)
-            if not path_obj.exists():
-                logger.warning(f"图片文件不存在: {path_str}，已清理")
-                file.drop()
-                return self
-
-            if file.file_id:
-                segment_to_send = MessageSegment.image(file=file.file_id)
-            elif file.suffix == ".gif":
-                file_content = path_obj.read_bytes()
-                segment_to_send = MessageSegment.image(file=file_content)
-            else:
-                segment_to_send = MessageSegment.image(file=path_obj)
-        else:
-            segment_to_send = MessageSegment.image(file=file)
-
-        if segment_to_send:
-            self.message.append(segment_to_send)
-            self._healing_map.append(meta_to_map)
-
-        return self
-
-    def reply_to(self, message_id_or_event: Union[int, str, MessageEvent]):
-        if isinstance(message_id_or_event, MessageEvent):
-            message_id_or_event = message_id_or_event.message_id
-        self._reply_id = int(message_id_or_event)
-        return self
-
-    async def send(self, matcher: Matcher, bot: Optional[Bot] = None):
-        if not self.message and not self._reply_id:
-            logger.warning("MessageBuilder: 消息为空，取消发送。")
-            return
-
-        final_message = self.message.copy()
-        healing_map = self._healing_map.copy()
-
-        if final_message:
-            last_segment = final_message[-1]
-            if last_segment.type == "text":
-                text_data = last_segment.data.get("text", "")
-                if text_data.endswith("\n"):
-                    text_data = text_data[:-1]
-                    last_segment.data["text"] = text_data
-
-        reply_id_to_use = self._reply_id
-
-        if reply_id_to_use is not None:
-            final_message.insert(0, MessageSegment.reply(reply_id_to_use))
-            healing_map.insert(0, None)
-
-        try:
-            await matcher.send(final_message)
-        except Exception as e:
-            if '1200' in str(e):
-                logger.warning(f"发送失败 (retcode={1200})，缓存失效。启动自愈...")
-                bot = bot or get_bot()
-                await self._handle_healing(final_message, healing_map, matcher, bot)
-            else:
-                logger.error(f"MessageBuilder 发送失败 (非 1200): {e}")
-                raise e
-
-    async def _handle_healing(self, failed_message: Message, healing_map: list[Optional[ImageMeta]], matcher: Matcher,
-                              bot: Bot):
-        """
-        私有方法：处理缓存失效后的重建、重发、更新逻辑
-        """
-        healed_message = Message()
-        new_seg_to_meta_map: dict[int, ImageMeta] = {}
-
-        needs_healing = False
-
-        for i, seg in enumerate(failed_message):
-            if seg.type != 'image':
-                healed_message.append(seg)
-                continue
-
-            meta: Optional['ImageMeta'] = healing_map[i]
-
-            if not meta:
-                healed_message.append(seg)
-                continue
-
-            needs_healing = True
-            logger.debug(f"ImageMeta {meta.id} (file_id: {meta.file_id}) 失效, 换用本地路径。")
-            path_str = meta.get_image_path()
-            path_obj = Path(path_str)
-
-            new_seg: MessageSegment | None = None
-            if not path_obj.exists():
-                logger.error(f"自愈失败：ImageMeta {meta.id} 本地文件已丢失: {path_str}")
-                meta.drop()
-            elif meta.suffix == ".gif":
-                new_seg = MessageSegment.image(file=path_obj.read_bytes())
-            else:
-                new_seg = MessageSegment.image(file=path_obj)
-
-            if new_seg:
-                healed_message.append(new_seg)
-                new_seg_to_meta_map[id(new_seg)] = meta
-
-        if not needs_healing:
-            logger.error("捕获 1200，但没有可自愈的图片 (没有 ImageMeta 映射)。")
-            return
-
-        try:
-            logger.debug("尝试使用'治愈'后的消息发送...")
-            send_receipt = await matcher.send(healed_message, reply=False)
-            if not send_receipt or 'message_id' not in send_receipt:
-                logger.warning("自愈后发送成功，但未收到 message_id 回执，无法更新 file_id。")
-                return
-        except Exception as e2:
-            logger.error(f"自愈后发送依然失败: {e2}")
-            return
-
-        try:
-            message_id = send_receipt['message_id']
-            sent_message_data = await bot.get_msg(message_id=message_id)
-            sent_message = sent_message_data['message']
-        except Exception as e3:
-            logger.error(f"自愈成功，但获取新 file_id 失败: {e3}")
-            return
-
-        if len(healed_message) != len(sent_message):
-            logger.warning("自愈后消息与回执数量不匹配，无法安全更新 file_id。")
-            return
-
-        for j, (healed_segment, sent_message) in enumerate(zip(healed_message, sent_message)):
-            meta = healing_map[j]
-
-            new_file_id = sent_message.get("data").get('file')
-
-            if meta and new_file_id:
-                meta.update_file_id(new_file_id)
-                logger.info(f"ImageMeta {meta.id} 自愈成功, 更新 file_id: {new_file_id}")
-            elif meta:
-                logger.warning(f"ImageMeta {meta.id} 自愈成功, 但未在回执中找到 new_file_id。")

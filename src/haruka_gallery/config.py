@@ -13,6 +13,7 @@ class Config(BaseModel):
     thumbnail_size: tuple[int, int] = (64, 64)
     repeat_image_show_size: tuple[int, int] = (128, 128)
     canvas_limit_size: tuple[int, int] = (4096, 4096)
+    random_image_limit: int = 10
 
     @property
     def cache_dir(self) -> Path:

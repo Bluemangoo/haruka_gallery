@@ -9,6 +9,7 @@ size_limit_mb=10
 thumbnail_size=[64, 64]
 repeat_image_show_size=[128, 128]
 canvas_limit_size=[4096, 4096]
+random_image_limit=10
 ```
 
 ## Requirements

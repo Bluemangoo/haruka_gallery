@@ -378,6 +378,10 @@ async def random_image(event: MessageEvent, params: str, matcher: type[Matcher])
         if not gallery:
             return await MessageBuilder().text(f"没有找到画廊 {gallery_name}").reply_to(event).send(matcher)
 
+    if count > gallery_config.random_image_limit:
+        return await MessageBuilder().text(f"单次查看图片数量不能超过 {gallery_config.random_image_limit} 张").reply_to(
+            event).send(matcher)
+
     images = get_random_image(gallery, tags=tags, comment=comment, count=count)
     if len(images) == 0:
         return await MessageBuilder().text(f"画廊 {gallery_name} 中没有图片").reply_to(event).send(matcher)

@@ -228,15 +228,18 @@ async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):
         existing_image_files = [image for image, _ in existing_images]
         image_files = [image for image in image_files if image not in existing_image_files]
 
+    image_obj = None
     for image in image_files:
-        gallery.add_image_unchecked(image.local_path, comment, tags, str(event.user_id),
-                                    file_id=image.extra.get("file_id"))
+        image_obj = gallery.add_image_unchecked(image.local_path, comment, tags, str(event.user_id),
+                                                file_id=image.extra.get("file_id"))
 
     message_builder = MessageBuilder().reply_to(event)
     if len(unknown_args) > 0:
         message_builder.text(f"未知参数：{' '.join(unknown_args)}。\n")
     if len(all_image_files) > 0:
         message_builder.text(f"成功添加 {len(image_files)}/{len(all_image_files)} 张图片到画廊 {gallery_name}。")
+    if len(image_files) == 1:
+        message_builder.text(f"新图片ID：{image_obj.id}。")
     if len(tags) > 0:
         message_builder.text(f"添加的图片附加标签：{', '.join(tags)}。")
     if comment != "":

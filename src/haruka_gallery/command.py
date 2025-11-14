@@ -286,6 +286,26 @@ async def remove_image(event: MessageEvent, params: str, matcher: type[Matcher])
     return await MessageBuilder().text(f"没有找到图片 {image_id}").reply_to(event).send(matcher)
 
 
+async def move_image(event: MessageEvent, params: str, matcher: type[Matcher]):
+    args = ArgParser(params)
+    target_gallery_name = args.pop()
+    image_ids = args.pop_all().split(" ")
+    gallery = gallery_manager.find_gallery(target_gallery_name)
+    if not gallery:
+        return await MessageBuilder().text(f"没有找到画廊 {target_gallery_name}").reply_to(event).send(matcher)
+    if len(image_ids) == 0:
+        return await reply_help(event, matcher)
+    message_builder = MessageBuilder().reply_to(event)
+    for image_id in image_ids:
+        image = gallery_manager.get_image_by_id(image_id)
+        if image:
+            image.move_to(gallery)
+            message_builder.text(f"已将图片 {image_id} 移动到画廊 {target_gallery_name}。\n")
+        else:
+            message_builder.text(f"没有找到图片 {image_id}。\n")
+    return await message_builder.send(matcher)
+
+
 async def random_image(event: MessageEvent, params: str, matcher: type[Matcher]):
     args = ArgParser(params)
     if args.peek(2) == "全部":

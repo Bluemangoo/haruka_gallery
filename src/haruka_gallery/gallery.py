@@ -347,6 +347,17 @@ class ImageMeta:
         db.commit()
         self.file_id = new_file_id
 
+    def move_to(self, new_gallery: Gallery):
+        old_gallery_id = self.gallery.id
+        db.execute("update images set gallery_id=? where id=?", (new_gallery.id, self.id))
+        db.commit()
+        old_path = gallery_config.data_dir / str(old_gallery_id) / self.get_file_name()
+        new_dir = gallery_config.data_dir / str(new_gallery.id)
+        new_dir.mkdir(parents=True, exist_ok=True)
+        new_path = new_dir / self.get_file_name()
+        shutil.move(old_path, new_path)
+        self.gallery = new_gallery
+
     def drop(self):
         db.execute("delete from images where id=?", (self.id,))
         db.commit()

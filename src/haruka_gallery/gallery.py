@@ -321,10 +321,7 @@ class ImageMeta:
         return f"{self.id}{self.suffix}"
 
     def get_image_path(self) -> Path:
-        image_path = gallery_config.data_dir / str(self.gallery.id) / self.get_file_name()
-        if not image_path.exists():
-            raise FileNotFoundError("Image file not found")
-        return image_path
+        return gallery_config.data_dir / str(self.gallery.id) / self.get_file_name()
 
     def update_tags(self, new_tags: list[str]):
         tag_ids = ImageMeta.get_or_create_tags(new_tags)
@@ -384,7 +381,7 @@ gallery_manager.load_galleries()
 
 
 def get_random_image(gallery: Optional[Gallery], tags: Optional[list[str]] = None, comment: Optional[str] = None,
-                 count: int = 1) -> list[ImageMeta]:
+                     count: int = 1) -> list[ImageMeta]:
     if tags is None:
         tags = []
     tag_ids_res = ImageMeta.get_tags(tags)

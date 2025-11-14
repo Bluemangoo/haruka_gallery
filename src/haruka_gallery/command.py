@@ -277,12 +277,12 @@ async def remove_image(event: MessageEvent, params: str, matcher: type[Matcher])
     image_id = params.strip()
     if image_id == "":
         return await reply_help(event, matcher)
-    for gallery in gallery_manager.list_galleries():
-        image = gallery.get_image_by_id(image_id)
-        if image:
-            image.drop()
-            return await MessageBuilder().text(f"已从画廊 {gallery.name} 中删除图片 {image_id}").reply_to(event).send(
-                matcher)
+    image = gallery_manager.get_image_by_id(image_id)
+    if image:
+        gallery = image.gallery
+        image.drop()
+        return await MessageBuilder().text(f"已从画廊 {gallery.name} 中删除图片 {image_id}").reply_to(event).send(
+            matcher)
     return await MessageBuilder().text(f"没有找到图片 {image_id}").reply_to(event).send(matcher)
 
 

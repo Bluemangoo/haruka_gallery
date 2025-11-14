@@ -28,9 +28,11 @@ async def _(event: MessageEvent, args=CommandArg()):
             return await remove_image(event, params, gall_command)
         if subcommand == "modify" or subcommand == "修改":
             return await modify_image(event, params, gall_command)
+        if subcommand == "move" or subcommand == "移动":
+            return await move_image(event, params, gall_command)
         if subcommand == "show" or subcommand == "查看" or subcommand == "看":
             return await random_image(event, params, gall_command)
-        if subcommand == "show-all" or subcommand == "查看全部" or subcommand == "看全部":
+        if subcommand == "show-all" or subcommand == "查看全部" or subcommand == "看全部" or subcommand == "查看所有" or subcommand == "看所有":
             return await show_all(event, params, gall_command)
         if subcommand == "details" or subcommand == "详情":
             return await show_details(event, params, gall_command)
@@ -83,6 +85,7 @@ async def reply_help(event: MessageEvent, matcher: type[Matcher]):
         # "/gall {clear | 清空画廊} <画廊名称> - 清空指定画廊中的所有图片\n"
         "/gall {add | upload | 添加 | 上传} [force | 强制] [skip | 跳过] [gallery] <图片链接或回复图片> - 添加图片到画廊，使用 force 参数可强制添加重复图片\n"
         "/gall {modify | 修改} <图片ID> [+#标签 | -#标签 | --tag +标签1 | --tags +标签1,-标签2] [-- 备注] - 修改图片的标签和备注\n"
+        "/gall {move | 移动} <目标画廊名称> <图片ID1> <图片ID2> ... - 将指定ID的图片移动到目标画廊\n"
         "/gall {remove | 删除} <图片ID> - 从画廊中删除指定ID的图片\n"
         "/gall {show | 查看 | 看} {<画廊名称> | *} [筛选条件] [数量] - 随机查看画廊中的图片，*则从所有画廊，筛选条件可使用 [#标签 | --tag 标签 | --tags 标签1,标签2] [-- 备注]，数量可使用 xN 或 N 表示 (需要在备注前面)\n"
         "/gall {show | 查看 | 看} <图片ID1> <图片ID2> ... - 查看指定ID的图片\n"
@@ -309,7 +312,7 @@ async def move_image(event: MessageEvent, params: str, matcher: type[Matcher]):
 
 async def random_image(event: MessageEvent, params: str, matcher: type[Matcher]):
     args = ArgParser(params)
-    if args.peek(2) == "全部":
+    if args.peek(2) == "全部" or args.peek(2) == "所有":
         args.pop(2)
         return await show_all(event, args.pop_all(), matcher)
     gallery_name = args.pop()

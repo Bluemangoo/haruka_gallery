@@ -4,14 +4,15 @@ create table meta
 );
 
 insert into meta (version)
-values (1);
+values (2);
 
 create table galleries
 (
-    id         integer primary key autoincrement,
-    name       text not null,
-    created_at timestamp default current_timestamp,
-    updated_at timestamp default current_timestamp
+    id              integer primary key autoincrement,
+    name            text                not null,
+    require_comment integer   default 0 not null check ( require_comment in (0, 1) ),
+    created_at      timestamp default current_timestamp,
+    updated_at      timestamp default current_timestamp
 );
 
 create table images

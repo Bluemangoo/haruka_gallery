@@ -1,11 +1,12 @@
 from pathlib import Path
 
-from nonebot import get_plugin_config
+from nonebot import get_plugin_config, get_driver
 from pydantic import BaseModel
 
 _cache_dir: Path = Path("cache/haruka_gallery")
 _config_dir: Path = Path("config/haruka_gallery")
 _data_dir: Path = Path("data/haruka_gallery")
+_bot_name: str = "小遥"
 
 
 class Config(BaseModel):
@@ -14,6 +15,7 @@ class Config(BaseModel):
     repeat_image_show_size: tuple[int, int] = (128, 128)
     canvas_limit_size: tuple[int, int] = (4096, 4096)
     random_image_limit: int = 10
+    enable_whateat: bool = False
 
     @property
     def cache_dir(self) -> Path:
@@ -30,9 +32,17 @@ class Config(BaseModel):
         """插件数据目录"""
         return _data_dir
 
+    @property
+    def bot_name(self) -> str:
+        """机器人名称"""
+        return _bot_name
+
 
 try:
     gallery_config: Config = get_plugin_config(Config)
+    nickname = list(get_driver().config.nickname)
+    if nickname:
+        _bot_name = nickname[0]
 except Exception:
     import sys
 

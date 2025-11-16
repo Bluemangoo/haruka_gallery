@@ -12,14 +12,6 @@ from .config import gallery_config
 from .data import db
 
 
-def find_image(image_id: int):
-    cursor = db.execute("select * from images where id=?", (image_id,))
-    row = cursor.fetchone()
-    if row:
-        return ImageMeta.from_row(row)
-    return None
-
-
 class GalleryManager:
     galleries: list['Gallery']
 
@@ -27,11 +19,11 @@ class GalleryManager:
         self.galleries = []
         self.load_galleries()
 
-    def add_gallery(self, name: list[str]) -> Optional['Gallery']:
+    def add_gallery(self, name: list[str], require_comment: bool = False) -> Optional['Gallery']:
         for n in name:
             if self.check_exists(n):
                 return None
-        gallery = Gallery.new_unchecked(name)
+        gallery = Gallery.new_unchecked(name, require_comment=require_comment)
         self.galleries.append(gallery)
         return gallery
 
@@ -55,19 +47,22 @@ class GalleryManager:
 
     @staticmethod
     def get_image_by_id(image_id: int) -> Optional['ImageMeta']:
-        cursor = db.execute("select * from images where id=?", (image_id,))
+        cursor = db.execute(
+            "select id, gallery_id, comment, suffix, uploader, phash, file_id, created_at, updated_at from images where id=?",
+            (image_id,))
         row = cursor.fetchone()
         if row:
             return ImageMeta.from_row(row)
         return None
 
     def load_galleries(self):
-        cursor = db.execute("select * from galleries")
+        cursor = db.execute("select id, name, require_comment from galleries")
         rows = cursor.fetchall()
         for row in rows:
             gallery = Gallery(
                 gallery_id=row[0],
-                name=row[1].split(" ")
+                name=row[1].split(" "),
+                require_comment=bool(row[2])
             )
             self.galleries.append(gallery)
 
@@ -75,20 +70,21 @@ class GalleryManager:
 class Gallery:
     id: int
     name: list[str]
+    require_comment: bool = False
 
-    def __init__(self, gallery_id: int, name: list[str]):
+    def __init__(self, gallery_id: int, name: list[str], require_comment: bool = False):
         self.id = gallery_id
         self.name = name
+        self.require_comment = require_comment
 
     @classmethod
-    def new_unchecked(cls, name: list[str]):
-        cursor = db.execute("insert into galleries (name) VALUES (?)", (" ".join(name),))
+    def new_unchecked(cls, name: list[str], require_comment: bool = False) -> 'Gallery':
+        cursor = db.execute("insert into galleries (name, require_comment) VALUES (?,?)",
+                            (" ".join(name), 1 if require_comment else 0))
         db.commit()
-        cursor = db.execute("select * from galleries where id=?", (cursor.lastrowid,))
-        row = cursor.fetchone()
         return cls(
-            gallery_id=row[0],
-            name=name
+            gallery_id=cursor.lastrowid,
+            name=name,
         )
 
     def add_image_unchecked(self, image_path: PathLike | str, comment, tags: list[str], uploader: str,
@@ -105,7 +101,9 @@ class Gallery:
         return meta
 
     def list_images(self) -> list['ImageMeta']:
-        cursor = db.execute("select * from images where gallery_id=?", (self.id,))
+        cursor = db.execute(
+            "select id, gallery_id, comment, suffix, uploader, phash, file_id, created_at, updated_at from images where gallery_id=?",
+            (self.id,))
         rows = cursor.fetchall()
         images = []
         for row in rows:
@@ -131,6 +129,11 @@ class Gallery:
     def update_name(self):
         db.execute("update galleries set name=? where id=?", (" ".join(self.name), self.id))
         db.commit()
+
+    def update_require_comment(self, require: bool):
+        db.execute("update galleries set require_comment=? where id=?", (1 if require else 0, self.id))
+        db.commit()
+        self.require_comment = require
 
 
 class PhashWrapper:
@@ -242,7 +245,7 @@ class ImageMeta:
             "insert into images (gallery_id, comment, suffix, uploader, file_id, phash) VALUES (?,?,?,?,?,?)",
             (gallery.id, comment, suffix, uploader, file_id, binary_phash))
         db.commit()
-        cursor = db.execute("select * from images where id=?", (cursor.lastrowid,))
+        cursor = db.execute("select id, created_at from images where id=?", (cursor.lastrowid,))
         row = cursor.fetchone()
         image_id = row[0]
         for tag_id in tag_ids:
@@ -257,7 +260,7 @@ class ImageMeta:
             uploader=uploader,
             file_id=file_id,
             phash=phash,
-            create_time=row[8]
+            create_time=row[1]
         )
 
     @classmethod
@@ -420,7 +423,7 @@ def get_random_image(gallery: Optional[Gallery], tags: Optional[list[str]] = Non
     search_gallery = "and i.gallery_id = ?" if gallery is not None else ""
     gallery_param = [gallery.id] if gallery is not None else []
     cursor = db.execute(f"""
-        select i.*
+        select i.id, i.gallery_id, i.comment, i.suffix, i.uploader, i.phash, i.file_id, i.created_at, i.updated_at
         from images i
         where
             1 = 1 
@@ -436,3 +439,16 @@ def get_random_image(gallery: Optional[Gallery], tags: Optional[list[str]] = Non
         image_meta = ImageMeta.from_row(row)
         images.append(image_meta)
     return images
+
+
+if gallery_config.enable_whateat:
+    if gall := gallery_manager.find_gallery("吃什么"):
+        if not gall.require_comment:
+            gall.update_require_comment(True)
+    else:
+        gallery_manager.add_gallery(["吃什么"], require_comment=True)
+    if gall := gallery_manager.find_gallery("喝什么"):
+        if not gall.require_comment:
+            gall.update_require_comment(True)
+    else:
+        gallery_manager.add_gallery(["喝什么"], require_comment=True)

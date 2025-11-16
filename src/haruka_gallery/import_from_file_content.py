@@ -22,4 +22,7 @@ for ext in ['*.gif', '*.jpg', '*.jpeg', '*.png', '*.gif', '*.bmp', '*.webp']:
             continue
         comment = p.stem if with_comment else ""
         gallery.add_image_unchecked(p, comment, [], "console")
-        print("已添加图片:", p.name)
+        if with_comment:
+            print("已添加图片及评论:", p.name)
+        else:
+            print("已添加图片:", p.name)

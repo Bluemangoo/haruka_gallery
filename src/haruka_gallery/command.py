@@ -243,7 +243,7 @@ async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):
     if len(tags) > 0:
         message_builder.text(f"添加的图片附加标签：{', '.join(tags)}。")
     if comment != "":
-        message_builder.text(f"添加的图片附加评论：{comment}。")
+        message_builder.text(f"添加的图片附加备注：{comment}。")
     if not is_skip and len(existing_images) > 0:
         message_builder.text(f"{len(existing_images)} 张图片已存在于画廊 {gallery_name}：")
 

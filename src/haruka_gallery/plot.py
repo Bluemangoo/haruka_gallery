@@ -701,12 +701,22 @@ class Grid(Widget):
 
 @dataclass
 class TextStyle:
-    font: str = DEFAULT_FONT
-    size: int = 16
-    color: Tuple[int, int, int, int] = BLACK
-    use_shadow: bool = False
-    shadow_offset: Tuple[int, int] | int = 1
-    shadow_color: Tuple[int, int, int, int] = SHADOW
+    font: str
+    size: int
+    color: Tuple[int, int, int, int]
+    use_shadow: bool
+    shadow_offset: Tuple[int, int] | int
+    shadow_color: Tuple[int, int, int, int]
+
+    def __init__(self, font: str = DEFAULT_FONT, size: int = 16, color: Tuple[int, int, int, int] = BLACK,
+                 use_shadow: bool = False, shadow_offset: Tuple[int, int] | int = 1,
+                 shadow_color: Tuple[int, int, int, int] = SHADOW):
+        self.font = font
+        self.size = size
+        self.color = color
+        self.use_shadow = use_shadow
+        self.shadow_offset = shadow_offset
+        self.shadow_color = shadow_color
 
     def replace(
             self,

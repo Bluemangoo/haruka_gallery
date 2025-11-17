@@ -181,44 +181,62 @@ async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):
     if not gallery:
         return await MessageBuilder().text(f"没有找到画廊 {gallery_name}").reply_to(event).send(matcher)
 
-    images = await get_images_from_context(event)
-    if len(images) == 0:
-        return await MessageBuilder().text(f"没有找到图片").reply_to(event).send(matcher)
-    image_files = await download_images(images)
-    all_image_files = [img for img in image_files]
-
     tags = []
     unknown_args = []
     comment = ""
+    warnings = set()
     while current := args.peek():
         if current == "--tag":
             args.pop()
             tag = args.pop()
-            if tag and not tag.startswith("-"):
+            check_result = check_tag(tag)
+            if check_result[0]:
                 tags.append(tag)
                 continue
             else:
                 unknown_args.append(current)
                 unknown_args.append(tag)
+                warnings.add(check_result[1])
         elif current == "--tags":
             args.pop()
             tag_str = args.pop()
-            if tag_str and not tag_str.startswith("-"):
-                tags.extend(re.split(r"[，,;]+", tag_str))
+            if tag_str:
+                tags = re.split(r"[，,;]+", tag_str)
+                for tag in tags:
+                    check_result = check_tag(tag)
+                    if not check_result[0]:
+                        unknown_args.append(current)
+                        unknown_args.append(tag)
+                        warnings.add(check_result[1])
+                        continue
+                tags.extend(tags)
                 continue
             else:
                 unknown_args.append(current)
                 unknown_args.append(tag_str)
+                warnings.add("标签不能为空")
         elif current == "--":
             args.pop()
             comment = args.pop_all()
+            if comment.startswith("-"):
+                warnings.add("备注不能以 - 开头")
+                unknown_args.append(current)
+                unknown_args.append(comment)
+                comment = ""
             break
         elif current.startswith("#"):
             tag = args.pop()[1:]
-            if tag.strip() != "":
+            check_result = check_tag(tag)
+            if check_result[0]:
                 tags.append(tag)
-                continue
+            else:
+                unknown_args.append(current)
+                warnings.add(check_result[1])
         else:
+            if current.startswith("-"):
+                unknown_args.append(current)
+                warnings.add("备注不能以 - 开头")
+                continue
             if comment != "":
                 unknown_args.append(comment)
             comment = args.pop()
@@ -228,6 +246,19 @@ async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):
             return await MessageBuilder().text(
                 f"画廊 {gallery_name} 需要添加备注，请使用 -- 备注 内容添加备注").reply_to(
                 event).send(matcher)
+
+    message_builder = MessageBuilder().reply_to(event)
+    for warning in warnings:
+        message_builder.text(f"警告：{warning}。\n")
+    if len(unknown_args) > 0:
+        message_builder.text(f"未知参数：{' '.join(unknown_args)}。\n")
+        return await message_builder.send(matcher)
+
+    images = await get_images_from_context(event)
+    if len(images) == 0:
+        return await MessageBuilder().text(f"没有找到图片").reply_to(event).send(matcher)
+    image_files = await download_images(images)
+    all_image_files = [img for img in image_files]
 
     existing_images: list[Tuple[CachedFile, list[ImageMeta]]] = []
     if not is_force:
@@ -244,9 +275,6 @@ async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):
         image_obj = gallery.add_image_unchecked(image.local_path, comment, tags, str(event.user_id),
                                                 file_id=image.extra.get("file_id"))
 
-    message_builder = MessageBuilder().reply_to(event)
-    if len(unknown_args) > 0:
-        message_builder.text(f"未知参数：{' '.join(unknown_args)}。\n")
     if len(all_image_files) > 0:
         message_builder.text(f"成功添加 {len(image_files)}/{len(all_image_files)} 张图片到画廊 {gallery_name}。")
     if len(image_files) == 1:
@@ -341,6 +369,7 @@ async def random_image(event: MessageEvent, params: str, matcher: type[Matcher])
     count = 1
     count_str = ""
     comment = None
+    with_details = False
     while current := args.peek():
         if current == "--tag":
             args.pop()
@@ -360,6 +389,9 @@ async def random_image(event: MessageEvent, params: str, matcher: type[Matcher])
             else:
                 unknown_args.append(current)
                 unknown_args.append(tag_str)
+        elif current == "--details":
+            args.pop()
+            with_details = True
         elif current == "--":
             args.pop()
             comment = args.pop_all()
@@ -400,6 +432,17 @@ async def random_image(event: MessageEvent, params: str, matcher: type[Matcher])
     builder = MessageBuilder().reply_to(event)
     if len(unknown_args) > 0:
         builder.text(f"未知参数：{' '.join(unknown_args)}。\n")
+    if with_details:
+        if len(images) > 1:
+            builder.text("多张图片不支持查看详情。\n")
+        else:
+            image = images[0]
+            builder.text(f"图片ID: {image.id}\n")
+            builder.text(f"所属画廊: {' '.join(image.gallery.name)}\n")
+            builder.text(f"标签: {', '.join(image.tags)}\n")
+            builder.text(f"备注: {image.comment}\n")
+            builder.text(f"上传者ID: {image.uploader}\n")
+            builder.text(f"添加时间: {image.create_time}\n")
     for image in images:
         builder.image(image)
     return await builder.send(matcher)
@@ -468,6 +511,7 @@ async def modify_image(event: MessageEvent, params: str, matcher: type[Matcher])
     comment = image.comment
 
     unknown_args = []
+    warnings = set()
     proc_tag = []
 
     while current := args.peek():
@@ -500,6 +544,11 @@ async def modify_image(event: MessageEvent, params: str, matcher: type[Matcher])
         elif current == "--":
             args.pop()
             comment = args.pop_all()
+            if comment.startswith("-"):
+                warnings.add("备注不能以 - 开头")
+                unknown_args.append(current)
+                unknown_args.append(comment)
+                comment = image.comment
             break
         else:
             unknown_args.append(args.pop())
@@ -507,6 +556,11 @@ async def modify_image(event: MessageEvent, params: str, matcher: type[Matcher])
     for tag_op in proc_tag:
         if tag_op.startswith("+"):
             tag = tag_op[1:]
+            check_result = check_tag(tag)
+            if not check_result[0]:
+                unknown_args.append(tag_op)
+                warnings.add(check_result[1])
+                continue
             if tag not in tags:
                 tags.append(tag)
         elif tag_op.startswith("-"):
@@ -515,9 +569,16 @@ async def modify_image(event: MessageEvent, params: str, matcher: type[Matcher])
                 tags.remove(tag)
 
     message_builder = MessageBuilder().reply_to(event)
+    for warning in warnings:
+        message_builder.text(f"警告：{warning}。\n")
     if len(unknown_args) > 0:
         message_builder.text(f"未知参数：{' '.join(unknown_args)}。\n")
         return await message_builder.send(matcher)
+
+    if comment == "" and image.gallery.require_comment:
+        return await MessageBuilder().text(
+            f"画廊 {image.gallery.name} 需要添加备注，请使用 -- 内容 添加备注").reply_to(
+            event).send(matcher)
 
     modified = False
     if set(image.tags) != set(tags):
@@ -603,3 +664,11 @@ if gallery_config.enable_whateat:
         builder.text(image.comment)
         builder.image(image)
         return await builder.send(matcher)
+
+
+def check_tag(tag: str) -> Tuple[bool, str | None]:
+    if tag.strip() == "":
+        return False, "标签不能为空"
+    if tag.startswith("-"):
+        return False, "标签不能以 - 开头"
+    return True, None

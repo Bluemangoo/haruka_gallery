@@ -276,11 +276,11 @@ class ArgParser:
     def pop_all(self) -> Optional[str]:
         rng = self._current_range()
         if rng is None:
-            return None
+            return ""
         start, _ = rng
         rest = self._s[start:].strip()
         self._idx = len(self._tokens)
-        return rest if rest != "" else None
+        return rest
 
     def check_and_pop(self, expected: str) -> bool:
         token = self.peek()

@@ -376,16 +376,16 @@ class ImageMeta:
         return distance <= threshold
 
     def get_thumb(self) -> Optional[CachedFile]:
-        ext = ".jpg"
+        ext = ".webp"
         filename = f"{self.id}_thumb"
         thumb = file_cache.get_file(filename + ext, try_load=True)
         if thumb:
             return thumb.renewed().update_timeout(24 * 3600)
         try:
             thumb = file_cache.new_file(filename_without_ext=filename, ext=ext, timeout=24 * 3600)
-            img = Image.open(self.get_image_path()).convert('RGB')
+            img = Image.open(self.get_image_path()).convert('RGBA')
             img.thumbnail(gallery_config.thumbnail_size)
-            img.save(thumb.local_path, format='JPEG', optimize=True, quality=85)
+            img.save(thumb.local_path, format='WebP', optimize=True, quality=85)
             return thumb
         except Exception as e:
             logger.warning(f'生成画廊图片 {self.id} 缩略图失败: {e}')

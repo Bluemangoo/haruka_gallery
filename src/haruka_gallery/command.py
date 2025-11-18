@@ -249,9 +249,9 @@ async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):
 
     message_builder = MessageBuilder().reply_to(event)
     for warning in warnings:
-        message_builder.text(f"警告：{warning}。\n")
+        message_builder.text(f"警告：{warning}。")
     if len(unknown_args) > 0:
-        message_builder.text(f"未知参数：{' '.join(unknown_args)}。\n")
+        message_builder.text(f"未知参数：{' '.join(unknown_args)}。")
         return await message_builder.send(matcher)
 
     images = await get_images_from_context(event)
@@ -346,9 +346,9 @@ async def move_image(event: MessageEvent, params: str, matcher: type[Matcher]):
         image = gallery_manager.get_image_by_id(image_id)
         if image:
             image.move_to(gallery)
-            message_builder.text(f"已将图片 {image_id} 移动到画廊 {target_gallery_name}。\n")
+            message_builder.text(f"已将图片 {image_id} 移动到画廊 {target_gallery_name}。")
         else:
-            message_builder.text(f"没有找到图片 {image_id}。\n")
+            message_builder.text(f"没有找到图片 {image_id}。")
     return await message_builder.send(matcher)
 
 
@@ -431,18 +431,18 @@ async def random_image(event: MessageEvent, params: str, matcher: type[Matcher])
 
     builder = MessageBuilder().reply_to(event)
     if len(unknown_args) > 0:
-        builder.text(f"未知参数：{' '.join(unknown_args)}。\n")
+        builder.text(f"未知参数：{' '.join(unknown_args)}。")
     if with_details:
         if len(images) > 1:
-            builder.text("多张图片不支持查看详情。\n")
+            builder.text("多张图片不支持查看详情。")
         else:
             image = images[0]
-            builder.text(f"图片ID: {image.id}\n")
-            builder.text(f"所属画廊: {' '.join(image.gallery.name)}\n")
-            builder.text(f"标签: {', '.join(image.tags)}\n")
-            builder.text(f"备注: {image.comment}\n")
-            builder.text(f"上传者ID: {image.uploader}\n")
-            builder.text(f"添加时间: {image.create_time}\n")
+            builder.text(f"图片ID: {image.id}")
+            builder.text(f"所属画廊: {' '.join(image.gallery.name)}")
+            builder.text(f"标签: {', '.join(image.tags)}")
+            builder.text(f"备注: {image.comment}")
+            builder.text(f"上传者ID: {image.uploader}")
+            builder.text(f"添加时间: {image.create_time}")
     for image in images:
         builder.image(image)
     return await builder.send(matcher)
@@ -462,7 +462,7 @@ async def show_image(event: MessageEvent, params: str, matcher: type[Matcher]):
             else:
                 undefined_ids.append(id_str)
     if len(undefined_ids) > 0:
-        message_builder.text(f"未找到图片ID：{', '.join(undefined_ids)}。\n")
+        message_builder.text(f"未找到图片ID：{', '.join(undefined_ids)}。")
     for image in images:
         message_builder.image(image)
     return await message_builder.send(matcher)
@@ -570,9 +570,9 @@ async def modify_image(event: MessageEvent, params: str, matcher: type[Matcher])
 
     message_builder = MessageBuilder().reply_to(event)
     for warning in warnings:
-        message_builder.text(f"警告：{warning}。\n")
+        message_builder.text(f"警告：{warning}。")
     if len(unknown_args) > 0:
-        message_builder.text(f"未知参数：{' '.join(unknown_args)}。\n")
+        message_builder.text(f"未知参数：{' '.join(unknown_args)}。")
         return await message_builder.send(matcher)
 
     if comment == "" and image.gallery.require_comment:

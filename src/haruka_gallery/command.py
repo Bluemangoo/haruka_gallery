@@ -171,12 +171,10 @@ async def remove_gallery(event: MessageEvent, params: str, matcher: type[Matcher
 
 async def list_galleries(event: MessageEvent, _param: str, matcher: type[Matcher]):
     galleries = gallery_manager.galleries
-    print(len(galleries))
-    print(galleries)
     if len(galleries) == 0:
         return await MessageBuilder().text("当前没有任何画廊").reply_to(event).send(matcher)
     message_builder = MessageBuilder()
-    message_builder.text("当前画廊列表：")
+    message_builder.text(f"当前画廊列表({len(galleries)})：")
     for gallery in galleries:
         message_builder.text(f"- {' / '.join(gallery.name)} (图片数量: {gallery.count_images()})")
     return await ForwardMessageBuilder().node(message_builder).send(matcher)

@@ -83,7 +83,7 @@ async def _(event: MessageEvent, args=CommandArg()):
         raise e
 
 
-async def reply_help(event: MessageEvent, matcher: type[Matcher]):
+async def reply_help(_event: MessageEvent, matcher: type[Matcher]):
     help_text = (
         "画廊命令帮助 (/gall /gallery /画廊)：\n"
         "/gall {add-gallery | 创建画廊} <画廊名称> - 创建一个新的画廊，提供多个名称则作为别名\n"
@@ -261,8 +261,7 @@ async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):
                 event).send(matcher)
 
     message_builder = MessageBuilder().reply_to(event)
-    for warning in warnings:
-        message_builder.text(f"警告：{warning}。")
+    message_builder.texts([f"警告：{warning}。" for warning in warnings])
     if len(unknown_args) > 0:
         message_builder.text(f"未知参数：{' '.join(unknown_args)}。")
         return await message_builder.send(matcher)

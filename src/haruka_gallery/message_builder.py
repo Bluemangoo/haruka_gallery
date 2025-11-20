@@ -1,4 +1,5 @@
 import io
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Optional, Union, List
 
@@ -26,7 +27,7 @@ class MessageBuilder:
             self._healing_map.append(None)
         return self
 
-    def texts(self, texts: Optional[List[str]], newline: bool = True):
+    def texts(self, texts: Optional[Iterable[str]], newline: bool = True):
         if texts is not None:
             for text in texts:
                 self.text(text, newline=newline)

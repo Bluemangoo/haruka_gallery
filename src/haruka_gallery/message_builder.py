@@ -74,48 +74,6 @@ class MessageBuilder:
 
         return self
 
-    def node(self, content: "MessageBuilder", bot: Optional[Bot] = None):
-
-        actual_content = Message()
-
-        for i, seg in enumerate(content.message):
-            meta = content._healing_map[i] if i < len(content._healing_map) else None
-
-            if seg.type == "image" and meta:
-                path_str = meta.get_image_path()
-                path_obj = Path(path_str)
-
-                if path_obj.exists():
-                    if meta.suffix == ".gif":
-                        new_seg = MessageSegment.image(file=path_obj.read_bytes())
-                    else:
-                        new_seg = MessageSegment.image(file=path_obj)
-                    actual_content.append(new_seg)
-                else:
-                    logger.warning(f"构造转发消息时图片丢失: {path_str}")
-                    actual_content.append(seg)
-            else:
-                actual_content.append(seg)
-
-        if actual_content:
-            last_segment = actual_content[-1]
-            if last_segment.type == "text":
-                text_data = last_segment.data.get("text", "")
-                if text_data.endswith("\n"):
-                    text_data = text_data[:-1]
-                    last_segment.data["text"] = text_data
-
-        seg = MessageSegment.node_custom(
-            user_id=gallery_config.bot_id or int((bot or get_bot()).self_id),
-            nickname=gallery_config.bot_name,
-            content=actual_content
-        )
-
-        self.message.append(seg)
-        self._healing_map.append(None)
-
-        return self
-
     def reply_to(self, message_id_or_event: Union[int, str, MessageEvent]):
         if isinstance(message_id_or_event, MessageEvent):
             message_id_or_event = message_id_or_event.message_id
@@ -235,3 +193,56 @@ class MessageBuilder:
                 logger.info(f"ImageMeta {meta.id} 自愈成功, 更新 file_id: {new_file_id}")
             elif meta:
                 logger.warning(f"ImageMeta {meta.id} 自愈成功, 但未在回执中找到 new_file_id。")
+
+
+class ForwardMessageBuilder:
+    nodes: List[MessageSegment]
+
+    def __init__(self):
+        self.nodes = []
+
+    def node(self, content: MessageBuilder, bot: Optional[Bot] = None):
+        actual_content = Message()
+
+        for i, seg in enumerate(content.message):
+            meta = content._healing_map[i] if i < len(content._healing_map) else None
+
+            if seg.type == "image" and meta:
+                path_str = meta.get_image_path()
+                path_obj = Path(path_str)
+
+                if path_obj.exists():
+                    if meta.suffix == ".gif":
+                        new_seg = MessageSegment.image(file=path_obj.read_bytes())
+                    else:
+                        new_seg = MessageSegment.image(file=path_obj)
+                    actual_content.append(new_seg)
+                else:
+                    logger.warning(f"构造转发消息时图片丢失: {path_str}")
+                    actual_content.append(seg)
+            else:
+                actual_content.append(seg)
+
+        if actual_content:
+            last_segment = actual_content[-1]
+            if last_segment.type == "text":
+                text_data = last_segment.data.get("text", "")
+                if text_data.endswith("\n"):
+                    text_data = text_data[:-1]
+                    last_segment.data["text"] = text_data
+
+        seg = MessageSegment.node_custom(
+            user_id=gallery_config.bot_id or int((bot or get_bot()).self_id),
+            nickname=gallery_config.bot_name,
+            content=actual_content
+        )
+
+        self.nodes.append(seg)
+        return self
+
+    async def send(self, matcher: Matcher):
+        message = Message()
+        for node in self.nodes:
+            message.append(node)
+
+        return await matcher.send(message)

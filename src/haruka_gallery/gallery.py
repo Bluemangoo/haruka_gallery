@@ -400,7 +400,6 @@ class ImageMeta:
 
 
 gallery_manager = GalleryManager()
-gallery_manager.load_galleries()
 
 
 def get_random_image(gallery: Optional[Gallery], tags: Optional[list[str]] = None, comment: Optional[str] = None,

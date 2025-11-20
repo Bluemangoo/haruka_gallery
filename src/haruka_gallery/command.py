@@ -9,7 +9,7 @@ from nonebot.rule import startswith
 from .gallery import gallery_manager, Gallery, ImageMeta, get_random_image
 from .plot import *
 from .utils import get_images_from_context, download_images, CachedFile, file_cache, ArgParser
-from .message_builder import MessageBuilder
+from .message_builder import MessageBuilder, ForwardMessageBuilder
 
 gall_command = on_command("gallery", aliases={"画廊", "gall"}, force_whitespace=True, priority=5)
 kan_command = on_command("看", priority=8)
@@ -103,7 +103,7 @@ async def reply_help(_event: MessageEvent, matcher: type[Matcher]):
         "/看 - /gall show\n"
         "/上传 - /gall add"
     )
-    return await MessageBuilder().node(MessageBuilder().text(help_text)).send(matcher)
+    return await ForwardMessageBuilder().node(MessageBuilder().text(help_text)).send(matcher)
 
 
 async def add_gallery(event: MessageEvent, params: str, matcher: type[Matcher]):
@@ -171,13 +171,15 @@ async def remove_gallery(event: MessageEvent, params: str, matcher: type[Matcher
 
 async def list_galleries(event: MessageEvent, _param: str, matcher: type[Matcher]):
     galleries = gallery_manager.galleries
+    print(len(galleries))
+    print(galleries)
     if len(galleries) == 0:
         return await MessageBuilder().text("当前没有任何画廊").reply_to(event).send(matcher)
     message_builder = MessageBuilder()
     message_builder.text("当前画廊列表：")
     for gallery in galleries:
         message_builder.text(f"- {' / '.join(gallery.name)} (图片数量: {gallery.count_images()})")
-    return await MessageBuilder().node(message_builder).send(matcher)
+    return await ForwardMessageBuilder().node(message_builder).send(matcher)
 
 
 async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):

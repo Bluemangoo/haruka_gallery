@@ -97,6 +97,14 @@ class MessageBuilder:
             else:
                 actual_content.append(seg)
 
+        if actual_content:
+            last_segment = actual_content[-1]
+            if last_segment.type == "text":
+                text_data = last_segment.data.get("text", "")
+                if text_data.endswith("\n"):
+                    text_data = text_data[:-1]
+                    last_segment.data["text"] = text_data
+
         seg = MessageSegment.node_custom(
             user_id=gallery_config.bot_id or int((bot or get_bot()).self_id),
             nickname=gallery_config.bot_name,

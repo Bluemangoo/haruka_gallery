@@ -599,12 +599,26 @@ async def modify_image(event: MessageEvent, params: str, matcher: type[Matcher])
 
 async def show_details(event: MessageEvent, params: str, matcher: type[Matcher]):
     image_id_str = params.strip()
-    if image_id_str is None or not image_id_str.isdigit():
+    image: ImageMeta | None = None
+    if image_id_str is None:
+        images = await get_images_from_context(event)
+        if len(images) == 1:
+            image_file = (await download_images([images[0]]))[0]
+            for gallery in gallery_manager.list_galleries():
+                sames = gallery.find_same_image(image_file.local_path)
+                if sames and len(sames) > 0:
+                    image = sames[0]
+                    break
+    elif not image_id_str.isdigit():
         return await reply_help(event, matcher)
-    image_id = int(image_id_str)
-    image = gallery_manager.get_image_by_id(image_id)
+    else:
+        image_id = int(image_id_str)
+        image = gallery_manager.get_image_by_id(image_id)
     if not image:
-        return await MessageBuilder().text(f"没有找到图片ID {image_id}").reply_to(event).send(matcher)
+        if image_id_str:
+            return await MessageBuilder().text(f"没有找到图片ID {image_id_str}").reply_to(event).send(matcher)
+        else:
+            return await MessageBuilder().text(f"没有找到图片").reply_to(event).send(matcher)
 
     message_builder = MessageBuilder().reply_to(event)
     message_builder.text(f"图片ID: {image.id}")

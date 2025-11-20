@@ -43,6 +43,8 @@ async def _(event: MessageEvent, args=CommandArg()):
             return await modify_gallery(event, params, gall_command)
         if subcommand == "remove-gallery" or subcommand == "删除画廊":
             return await remove_gallery(event, params, gall_command)
+        if subcommand == "list-gallery" or subcommand == "list-galleries" or subcommand == "列出画廊":
+            return await list_galleries(event, params, gall_command)
         if subcommand == "clear" or subcommand == "清空画廊":
             return await clear_gallery(event, params, gall_command)
         return await reply_help(event, gall_command)
@@ -165,6 +167,17 @@ async def remove_gallery(event: MessageEvent, params: str, matcher: type[Matcher
 
     gallery.drop()
     return await MessageBuilder().text(f"已删除画廊 {gallery_name}").reply_to(event).send(matcher)
+
+
+async def list_galleries(event: MessageEvent, _param: str, matcher: type[Matcher]):
+    galleries = gallery_manager.list_galleries()
+    if len(galleries) == 0:
+        return await MessageBuilder().text("当前没有任何画廊").reply_to(event).send(matcher)
+    message_builder = MessageBuilder().reply_to(event)
+    message_builder.text("当前画廊列表：")
+    for gallery in galleries:
+        message_builder.text(f"- {' / '.join(gallery.name)} (图片数量: {gallery.count_images()})")
+    return await message_builder.send(matcher)
 
 
 async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):

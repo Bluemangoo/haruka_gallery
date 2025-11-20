@@ -103,7 +103,7 @@ async def reply_help(event: MessageEvent, matcher: type[Matcher]):
         "/看 - /gall show\n"
         "/上传 - /gall add"
     )
-    return await MessageBuilder().text(help_text).reply_to(event).send(matcher)
+    return await MessageBuilder().node(MessageBuilder().text(help_text)).send(matcher)
 
 
 async def add_gallery(event: MessageEvent, params: str, matcher: type[Matcher]):
@@ -173,11 +173,11 @@ async def list_galleries(event: MessageEvent, _param: str, matcher: type[Matcher
     galleries = gallery_manager.galleries
     if len(galleries) == 0:
         return await MessageBuilder().text("当前没有任何画廊").reply_to(event).send(matcher)
-    message_builder = MessageBuilder().reply_to(event)
+    message_builder = MessageBuilder()
     message_builder.text("当前画廊列表：")
     for gallery in galleries:
         message_builder.text(f"- {' / '.join(gallery.name)} (图片数量: {gallery.count_images()})")
-    return await message_builder.send(matcher)
+    return await MessageBuilder().node(message_builder).send(matcher)
 
 
 async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):

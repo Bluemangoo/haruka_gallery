@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from nonebot import get_plugin_config, get_driver
+import nonebot
+from nonebot import get_plugin_config, get_driver, get_bot
 from pydantic import BaseModel
 
 _cache_dir: Path = Path("cache/haruka_gallery")
@@ -16,6 +17,7 @@ class Config(BaseModel):
     canvas_limit_size: tuple[int, int] = (4096, 4096)
     random_image_limit: int = 10
     enable_whateat: bool = False
+    bot_id: int | None = None
 
     @property
     def cache_dir(self) -> Path:

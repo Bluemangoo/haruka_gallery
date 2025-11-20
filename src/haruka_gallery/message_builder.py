@@ -6,6 +6,7 @@ from nonebot import logger, get_bot, Bot
 from nonebot.adapters.onebot.v11 import MessageSegment, Message, MessageEvent
 from nonebot.internal.matcher import Matcher
 
+from .config import gallery_config
 from .gallery import ImageMeta
 
 
@@ -69,6 +70,40 @@ class MessageBuilder:
         if segment_to_send:
             self.message.append(segment_to_send)
             self._healing_map.append(meta_to_map)
+
+        return self
+
+    def node(self, content: "MessageBuilder", bot: Optional[Bot] = None):
+
+        actual_content = Message()
+
+        for i, seg in enumerate(content.message):
+            meta = content._healing_map[i] if i < len(content._healing_map) else None
+
+            if seg.type == "image" and meta:
+                path_str = meta.get_image_path()
+                path_obj = Path(path_str)
+
+                if path_obj.exists():
+                    if meta.suffix == ".gif":
+                        new_seg = MessageSegment.image(file=path_obj.read_bytes())
+                    else:
+                        new_seg = MessageSegment.image(file=path_obj)
+                    actual_content.append(new_seg)
+                else:
+                    logger.warning(f"构造转发消息时图片丢失: {path_str}")
+                    actual_content.append(seg)
+            else:
+                actual_content.append(seg)
+
+        seg = MessageSegment.node_custom(
+            user_id=gallery_config.bot_id or int((bot or get_bot()).self_id),
+            nickname=gallery_config.bot_name,
+            content=actual_content
+        )
+
+        self.message.append(seg)
+        self._healing_map.append(None)
 
         return self
 

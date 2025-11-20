@@ -111,6 +111,13 @@ class Gallery:
             images.append(image_meta)
         return images
 
+    def count_images(self) -> int:
+        cursor = db.execute(
+            "select count(*) from images where gallery_id=?",
+            (self.id,))
+        row = cursor.fetchone()
+        return row[0] if row else 0
+
     def drop(self):
         images = self.list_images()
         for image in images:

@@ -170,7 +170,7 @@ async def remove_gallery(event: MessageEvent, params: str, matcher: type[Matcher
 
 
 async def list_galleries(event: MessageEvent, _param: str, matcher: type[Matcher]):
-    galleries = gallery_manager.list_galleries()
+    galleries = gallery_manager.galleries
     if len(galleries) == 0:
         return await MessageBuilder().text("当前没有任何画廊").reply_to(event).send(matcher)
     message_builder = MessageBuilder().reply_to(event)
@@ -613,17 +613,15 @@ async def modify_image(event: MessageEvent, params: str, matcher: type[Matcher])
 async def show_details(event: MessageEvent, params: str, matcher: type[Matcher]):
     image_id_str = params.strip()
     image: ImageMeta | None = None
-    if image_id_str is None:
+    if not image_id_str or not image_id_str.isdigit():
         images = await get_images_from_context(event)
         if len(images) == 1:
             image_file = (await download_images([images[0]]))[0]
-            for gallery in gallery_manager.list_galleries():
+            for gallery in gallery_manager.galleries:
                 sames = gallery.find_same_image(image_file.local_path)
                 if sames and len(sames) > 0:
                     image = sames[0]
                     break
-    elif not image_id_str.isdigit():
-        return await reply_help(event, matcher)
     else:
         image_id = int(image_id_str)
         image = gallery_manager.get_image_by_id(image_id)

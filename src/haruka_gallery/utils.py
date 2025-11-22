@@ -106,6 +106,17 @@ class FileCache:
                 self.files[url] = file
         return file
 
+    def take_over_files(self, re_expr: str, ignore_case=False, timeout: int = 3600) -> int:
+        import re
+        flags = re.IGNORECASE if ignore_case else 0
+        pattern = re.compile(re_expr, flags)
+        count = 0
+        for filename in os.listdir(gallery_config.cache_dir):
+            if pattern.match(filename):
+                self.get_file(filename, try_load=True).update_timeout(timeout)
+                count += 1
+        return count
+
     async def download(self, url: str, extra: dict | None = None) -> CachedFile:
         if url in self.files:
             return self.files[url].renewed().update_extra(extra)

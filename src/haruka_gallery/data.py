@@ -28,14 +28,6 @@ migration_map = {
 }
 
 while current_version < DB_VERSION:
-    # if current_version == 0:
-    #     with open(str(Path(__file__).resolve().parent / "sql" / "init.sql"), "r", encoding="utf-8") as f:
-    #         init_sql = f.read()
-    #         db.executescript(init_sql)
-    #         db.commit()
-    #         row = db.execute("select version from meta limit 1").fetchone()
-    #         current_version = row[0]
-    #     continue
     migration_file = migration_map.get(current_version)
     if migration_file is not None:
         with open(str(Path(__file__).resolve().parent / "sql" / migration_file), "r", encoding="utf-8") as f:

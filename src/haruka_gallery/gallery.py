@@ -55,6 +55,18 @@ class GalleryManager:
             return ImageMeta.from_row(row)
         return None
 
+    @staticmethod
+    def get_images_by_file_id(file_id: str) -> list['ImageMeta']:
+        cursor = db.execute(
+            "select id, gallery_id, comment, suffix, uploader, phash, file_id, created_at, updated_at from images where file_id=?",
+            (file_id,))
+        rows = cursor.fetchall()
+        images = []
+        for row in rows:
+            image_meta = ImageMeta.from_row(row)
+            images.append(image_meta)
+        return images
+
     def load_galleries(self):
         cursor = db.execute("select id, name, require_comment from galleries")
         rows = cursor.fetchall()

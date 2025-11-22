@@ -511,13 +511,19 @@ async def show_all(event: MessageEvent, params: str, matcher: type[Matcher]):
 
 async def modify_image(event: MessageEvent, params: str, matcher: type[Matcher]):
     args = ArgParser(params)
-    image_id_str = args.pop()
+    image_id_str = args.peek()
+    image: ImageMeta | None
     if image_id_str is None or not image_id_str.isdigit():
-        return await reply_help(event, matcher)
-    image_id = int(image_id_str)
-    image = gallery_manager.get_image_by_id(image_id)
+        image = await find_gallery_image_by_event(event)
+    else:
+        args.pop()
+        image_id = int(image_id_str)
+        image = gallery_manager.get_image_by_id(image_id)
     if not image:
-        return await MessageBuilder().text(f"没有找到图片ID {image_id}").reply_to(event).send(matcher)
+        if image_id_str:
+            return await MessageBuilder().text(f"没有找到图片ID {image_id_str}").reply_to(event).send(matcher)
+        else:
+            return await MessageBuilder().text(f"没有找到图片").reply_to(event).send(matcher)
 
     tags = image.tags.copy()
     comment = image.comment
@@ -611,16 +617,9 @@ async def modify_image(event: MessageEvent, params: str, matcher: type[Matcher])
 
 async def show_details(event: MessageEvent, params: str, matcher: type[Matcher]):
     image_id_str = params.strip()
-    image: ImageMeta | None = None
+    image: ImageMeta | None
     if not image_id_str or not image_id_str.isdigit():
-        images = await get_images_from_context(event)
-        if len(images) == 1:
-            image_file = (await download_images([images[0]]))[0]
-            for gallery in gallery_manager.galleries:
-                sames = gallery.find_same_image(image_file.local_path)
-                if sames and len(sames) > 0:
-                    image = sames[0]
-                    break
+        image = await find_gallery_image_by_event(event)
     else:
         image_id = int(image_id_str)
         image = gallery_manager.get_image_by_id(image_id)
@@ -696,3 +695,24 @@ def check_tag(tag: str) -> Tuple[bool, str | None]:
     if tag.startswith("-"):
         return False, "标签不能以 - 开头"
     return True, None
+
+
+async def find_gallery_image_by_event(event: MessageEvent) -> ImageMeta | None:
+    image: ImageMeta | None = None
+    images = await get_images_from_context(event)
+    if len(images) == 1:
+        # search by file_id
+        if images[0][1]:
+            found_images = gallery_manager.get_images_by_file_id(images[0][1])
+            if len(found_images) > 0:
+                image = found_images[0]
+
+        # search by image content
+        if not image:
+            image_file = (await download_images([images[0]]))[0]
+            for gallery in gallery_manager.galleries:
+                sames = gallery.find_same_image(image_file.local_path)
+                if sames and len(sames) > 0:
+                    image = sames[0]
+                    break
+    return image

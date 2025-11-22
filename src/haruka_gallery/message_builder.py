@@ -65,6 +65,8 @@ class MessageBuilder:
                     segment_to_send = MessageSegment.image(file=file_content)
                 else:
                     segment_to_send = MessageSegment.image(file=path_obj)
+                if file.comment != "":
+                    segment_to_send.data["summary"] = f"[{file.comment}]"
         else:
             segment_to_send = MessageSegment.image(file=file)
 
@@ -149,6 +151,8 @@ class MessageBuilder:
                 new_seg = MessageSegment.image(file=path_obj.read_bytes())
             else:
                 new_seg = MessageSegment.image(file=path_obj)
+            if meta.comment != "":
+                new_seg.data["summary"] = f"[{meta.comment}]"
 
             if new_seg:
                 healed_message.append(new_seg)

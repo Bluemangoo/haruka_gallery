@@ -332,30 +332,33 @@ async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):
 
 
 async def remove_image(event: MessageEvent, params: str, matcher: type[Matcher]):
-    image_id = params.strip()
-    if image_id == "":
-        return await reply_help(event, matcher)
-    image = gallery_manager.get_image_by_id(image_id)
-    if image:
+    args = ArgParser(params)
+    images = await find_gallery_images_by_arg_or_event(args, event)
+    message_builder = MessageBuilder().reply_to(event)
+    if len(images) == 0:
+        return await message_builder.text(f"没有找到图片").send(matcher)
+    for image_id, image in images:
+        if not image:
+            message_builder.text(f"没有找到图片 {image_id}。")
+            continue
+
         gallery = image.gallery
         image.drop()
-        return await MessageBuilder().text(f"已从画廊 {gallery.name} 中删除图片 {image_id}").reply_to(event).send(
-            matcher)
-    return await MessageBuilder().text(f"没有找到图片 {image_id}").reply_to(event).send(matcher)
+        message_builder.text(f"已从画廊 {gallery.name} 中删除图片 {image_id}。")
+    return await message_builder.send(matcher)
 
 
 async def move_image(event: MessageEvent, params: str, matcher: type[Matcher]):
     args = ArgParser(params)
+    message_builder = MessageBuilder().reply_to(event)
     target_gallery_name = args.pop()
-    image_ids = args.pop_all().split(" ")
     gallery = gallery_manager.find_gallery(target_gallery_name)
     if not gallery:
-        return await MessageBuilder().text(f"没有找到画廊 {target_gallery_name}").reply_to(event).send(matcher)
-    if len(image_ids) == 0:
-        return await reply_help(event, matcher)
-    message_builder = MessageBuilder().reply_to(event)
-    for image_id in image_ids:
-        image = gallery_manager.get_image_by_id(image_id)
+        return await message_builder.text(f"没有找到画廊 {target_gallery_name}").send(matcher)
+    images = await find_gallery_images_by_arg_or_event(args, event)
+    if len(images) == 0:
+        return await message_builder.text(f"没有找到图片").send(matcher)
+    for image_id, image in images:
         if image:
             image.move_to(gallery)
             message_builder.text(f"已将图片 {image_id} 移动到画廊 {target_gallery_name}。")
@@ -512,13 +515,7 @@ async def show_all(event: MessageEvent, params: str, matcher: type[Matcher]):
 async def modify_image(event: MessageEvent, params: str, matcher: type[Matcher]):
     args = ArgParser(params)
     image_id_str = args.peek()
-    image: ImageMeta | None
-    if image_id_str is None or not image_id_str.isdigit():
-        image = await find_gallery_image_by_event(event)
-    else:
-        args.pop()
-        image_id = int(image_id_str)
-        image = gallery_manager.get_image_by_id(image_id)
+    image = await find_gallery_image_by_arg_or_event(args, event)
     if not image:
         if image_id_str:
             return await MessageBuilder().text(f"没有找到图片ID {image_id_str}").reply_to(event).send(matcher)
@@ -600,29 +597,25 @@ async def modify_image(event: MessageEvent, params: str, matcher: type[Matcher])
 
     modified = False
     if set(image.tags) != set(tags):
-        message_builder.text(f"已修改图片ID {image_id}：")
+        message_builder.text(f"已修改图片ID {image.id}：")
         modified = True
         image.update_tags(list(set(tags)))
         message_builder.text(f"tag 为 {', '.join(image.tags)}")
     if image.comment != comment:
         if not modified:
-            message_builder.text(f"已修改图片ID {image_id}：")
+            message_builder.text(f"已修改图片ID {image.id}：")
             modified = True
         message_builder.text(f"comment 由 \"{image.comment}\" 修改为 \"{comment}\"")
         image.update_comment(comment)
     if not modified:
-        message_builder.text(f"图片ID {image_id} 未做任何修改。")
+        message_builder.text(f"图片ID {image.id} 未做任何修改。")
     return await message_builder.send(matcher)
 
 
 async def show_details(event: MessageEvent, params: str, matcher: type[Matcher]):
-    image_id_str = params.strip()
-    image: ImageMeta | None
-    if not image_id_str or not image_id_str.isdigit():
-        image = await find_gallery_image_by_event(event)
-    else:
-        image_id = int(image_id_str)
-        image = gallery_manager.get_image_by_id(image_id)
+    arg = ArgParser(params)
+    image_id_str = arg.peek()
+    image = await find_gallery_image_by_arg_or_event(arg, event)
     if not image:
         if image_id_str:
             return await MessageBuilder().text(f"没有找到图片ID {image_id_str}").reply_to(event).send(matcher)
@@ -697,22 +690,54 @@ def check_tag(tag: str) -> Tuple[bool, str | None]:
     return True, None
 
 
-async def find_gallery_image_by_event(event: MessageEvent) -> ImageMeta | None:
-    image: ImageMeta | None = None
-    images = await get_images_from_context(event)
-    if len(images) == 1:
-        # search by file_id
-        if images[0][1]:
-            found_images = gallery_manager.get_images_by_file_id(images[0][1])
-            if len(found_images) > 0:
-                image = found_images[0]
-
-        # search by image content
-        if not image:
-            image_file = (await download_images([images[0]]))[0]
-            for gallery in gallery_manager.galleries:
-                sames = gallery.find_same_image(image_file.local_path)
-                if sames and len(sames) > 0:
-                    image = sames[0]
-                    break
+async def find_gallery_image_by_arg_or_event(arg_parser: ArgParser, event: MessageEvent) -> ImageMeta | None:
+    image: ImageMeta | None
+    image_id_str = arg_parser.peek()
+    if image_id_str is None or not image_id_str.isdigit():
+        image = await find_gallery_image_by_event(event)
+    else:
+        arg_parser.pop()
+        image_id = int(image_id_str)
+        image = gallery_manager.get_image_by_id(image_id)
     return image
+
+
+async def find_gallery_images_by_arg_or_event(arg_parser: ArgParser, event: MessageEvent) -> list[
+    tuple[str, ImageMeta]]:
+    image_ids = arg_parser.pop_all().split(" ")
+    image_ids = [i for i in image_ids if i.strip()]
+    images = [(image_id, gallery_manager.get_image_by_id(image_id)) for image_id in image_ids]
+    images.extend([("", image) for image in await find_gallery_images_by_event(event)])
+    return images
+
+
+async def find_gallery_image(image: tuple[str, str | None]) -> ImageMeta | None:
+    # search by file_id
+    if image[1]:
+        found_images = gallery_manager.get_images_by_file_id(image[1])
+        if len(found_images) > 0:
+            return found_images[0]
+
+    # search by image content
+    image_file = (await download_images([image]))[0]
+    for gallery in gallery_manager.galleries:
+        sames = gallery.find_same_image(image_file.local_path)
+        if sames and len(sames) > 0:
+            return sames[0]
+    return None
+
+
+async def find_gallery_image_by_event(event: MessageEvent) -> ImageMeta | None:
+    images = await get_images_from_context(event)
+
+    return find_gallery_image(images[0]) if len(images) > 0 else None
+
+
+async def find_gallery_images_by_event(event: MessageEvent) -> list[ImageMeta]:
+    images = await get_images_from_context(event)
+    found_images = []
+    for image in images:
+        img = await find_gallery_image(image)
+        if img:
+            found_images.append(img)
+    return found_images

@@ -284,7 +284,7 @@ class ArgParser:
                 self._skip_empty_tokens()
                 return part if part != "" else None
 
-    def pop_all(self) -> Optional[str]:
+    def pop_all(self) -> str:
         rng = self._current_range()
         if rng is None:
             return ""

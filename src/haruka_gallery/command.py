@@ -452,12 +452,7 @@ async def random_image(event: MessageEvent, params: str, matcher: type[Matcher])
             builder.text("多张图片不支持查看详情。")
         else:
             image = images[0]
-            builder.text(f"图片ID: {image.id}")
-            builder.text(f"所属画廊: {' '.join(image.gallery.name)}")
-            builder.text(f"标签: {', '.join(image.tags)}")
-            builder.text(f"备注: {image.comment}")
-            builder.text(f"上传者ID: {image.uploader}")
-            builder.text(f"添加时间: {image.create_time}")
+            push_details(builder, image)
     for image in images:
         builder.image(image)
     return await builder.send(matcher)
@@ -465,6 +460,10 @@ async def random_image(event: MessageEvent, params: str, matcher: type[Matcher])
 
 async def show_image(event: MessageEvent, params: str, matcher: type[Matcher]):
     ids = params.split(" ")
+    require_details = "--details" in ids
+    if require_details:
+        ids.remove("--details")
+    ids = [id_str for id_str in ids if id_str.strip() != ""]
     images = []
     message_builder = MessageBuilder().reply_to(event)
     undefined_ids = []
@@ -476,6 +475,12 @@ async def show_image(event: MessageEvent, params: str, matcher: type[Matcher]):
                 images.append(image)
             else:
                 undefined_ids.append(id_str)
+    if require_details:
+        if len(images) > 1:
+            message_builder.text("警告：多张图片不支持查看详情。")
+        if len(images) == 1:
+            image = images[0]
+            push_details(message_builder, image)
     if len(undefined_ids) > 0:
         message_builder.text(f"未找到图片ID：{', '.join(undefined_ids)}。")
     for image in images:
@@ -623,12 +628,7 @@ async def show_details(event: MessageEvent, params: str, matcher: type[Matcher])
             return await MessageBuilder().text(f"没有找到图片").reply_to(event).send(matcher)
 
     message_builder = MessageBuilder().reply_to(event)
-    message_builder.text(f"图片ID: {image.id}")
-    message_builder.text(f"所属画廊: {' '.join(image.gallery.name)}")
-    message_builder.text(f"标签: {', '.join(image.tags)}")
-    message_builder.text(f"备注: {image.comment}")
-    message_builder.text(f"上传者ID: {image.uploader}")
-    message_builder.text(f"添加时间: {image.create_time}")
+    push_details(message_builder, image)
     message_builder.image(image)
     return await message_builder.send(matcher)
 
@@ -680,6 +680,15 @@ if gallery_config.enable_whateat:
         builder.text(image.comment)
         builder.image(image)
         return await builder.send(matcher)
+
+
+def push_details(builder: MessageBuilder, image: ImageMeta):
+    builder.text(f"图片ID: {image.id}")
+    builder.text(f"所属画廊: {' '.join(image.gallery.name)}")
+    builder.text(f"标签: {', '.join(image.tags)}")
+    builder.text(f"备注: {image.comment}")
+    builder.text(f"上传者ID: {image.uploader}")
+    builder.text(f"添加时间: {image.create_time}")
 
 
 def check_tag(tag: str) -> Tuple[bool, str | None]:

@@ -730,7 +730,7 @@ async def find_gallery_image(image: tuple[str, str | None]) -> ImageMeta | None:
 async def find_gallery_image_by_event(event: MessageEvent) -> ImageMeta | None:
     images = await get_images_from_context(event)
 
-    return find_gallery_image(images[0]) if len(images) > 0 else None
+    return await find_gallery_image(images[0]) if len(images) > 0 else None
 
 
 async def find_gallery_images_by_event(event: MessageEvent) -> list[ImageMeta]:

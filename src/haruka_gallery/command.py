@@ -520,15 +520,20 @@ async def show_all(event: MessageEvent, params: str, matcher: type[Matcher]):
 async def modify_image(event: MessageEvent, params: str, matcher: type[Matcher]):
     args = ArgParser(params)
     image_id_str = args.peek()
-    image = await find_gallery_image_by_arg_or_event(args, event)
-    if not image:
+    images = []
+    if image_id_str and image_id_str.isdigit():
+        image_id = int(args.pop())
+        image = gallery_manager.get_image_by_id(image_id)
+        images.append(image)
+    images = images + await find_gallery_images_by_event(event)
+    images: List[ImageMeta] = [image for image in images if image is not None]
+    if not images:
         if image_id_str:
             return await MessageBuilder().text(f"没有找到图片ID {image_id_str}").reply_to(event).send(matcher)
         else:
             return await MessageBuilder().text(f"没有找到图片").reply_to(event).send(matcher)
 
-    tags = image.tags.copy()
-    comment = image.comment
+    comment: Optional[str] = None
 
     unknown_args = []
     warnings = set()
@@ -568,25 +573,30 @@ async def modify_image(event: MessageEvent, params: str, matcher: type[Matcher])
                 warnings.add("备注不能以 - 开头")
                 unknown_args.append(current)
                 unknown_args.append(comment)
-                comment = image.comment
+                comment = None
             break
         else:
             unknown_args.append(args.pop())
 
-    for tag_op in proc_tag:
-        if tag_op.startswith("+"):
-            tag = tag_op[1:]
-            check_result = check_tag(tag)
-            if not check_result[0]:
-                unknown_args.append(tag_op)
-                warnings.add(check_result[1])
-                continue
-            if tag not in tags:
-                tags.append(tag)
-        elif tag_op.startswith("-"):
-            tag = tag_op[1:]
-            if tag in tags:
-                tags.remove(tag)
+    tags_list: List[List[str]] = []
+
+    for image in images:
+        tags = image.tags.copy()
+        for tag_op in proc_tag:
+            if tag_op.startswith("+"):
+                tag = tag_op[1:]
+                check_result = check_tag(tag)
+                if not check_result[0]:
+                    unknown_args.append(tag_op)
+                    warnings.add(check_result[1])
+                    continue
+                if tag not in tags:
+                    tags.append(tag)
+            elif tag_op.startswith("-"):
+                tag = tag_op[1:]
+                if tag in tags:
+                    tags.remove(tag)
+        tags_list.append(tags)
 
     message_builder = MessageBuilder().reply_to(event)
     for warning in warnings:
@@ -595,25 +605,32 @@ async def modify_image(event: MessageEvent, params: str, matcher: type[Matcher])
         message_builder.text(f"未知参数：{' '.join(unknown_args)}。")
         return await message_builder.send(matcher)
 
-    if comment == "" and image.gallery.require_comment:
-        return await MessageBuilder().text(
-            f"画廊 {image.gallery.name} 需要添加备注，请使用 -- 内容 添加备注").reply_to(
-            event).send(matcher)
+    if comment == "":
+        stop = False
+        for image in images:
+            if image.gallery.require_comment:
+                MessageBuilder().text(f"画廊 {image.gallery.name} 需要添加备注，请使用 -- 内容 添加备注")
+                stop = True
+        if stop:
+            return await message_builder.send(matcher)
 
-    modified = False
-    if set(image.tags) != set(tags):
-        message_builder.text(f"已修改图片ID {image.id}：")
-        modified = True
-        image.update_tags(list(set(tags)))
-        message_builder.text(f"tag 为 {', '.join(image.tags)}")
-    if image.comment != comment:
-        if not modified:
+    for image, tags in zip(images, tags_list):
+        modified = False
+        if set(image.tags) != set(tags):
             message_builder.text(f"已修改图片ID {image.id}：")
             modified = True
-        message_builder.text(f"comment 由 \"{image.comment}\" 修改为 \"{comment}\"")
-        image.update_comment(comment)
-    if not modified:
-        message_builder.text(f"图片ID {image.id} 未做任何修改。")
+            image.update_tags(list(set(tags)))
+            message_builder.text(f"tag 为 {', '.join(image.tags)}")
+        if comment is not None and image.comment != comment:
+            if not modified:
+                message_builder.text(f"已修改图片ID {image.id}：")
+                modified = True
+            message_builder.text(f"comment 由 \"{image.comment}\" 修改为 \"{comment}\"")
+            image.update_comment(comment)
+        if not modified:
+            message_builder.text(f"图片ID {image.id} 未做任何修改。")
+    if len(message_builder.message) > 10:
+        return await ForwardMessageBuilder().node(message_builder).send(matcher)
     return await message_builder.send(matcher)
 
 

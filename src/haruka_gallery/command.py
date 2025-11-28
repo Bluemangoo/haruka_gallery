@@ -525,8 +525,11 @@ async def modify_image(event: MessageEvent, params: str, matcher: type[Matcher])
         image_id = int(args.pop())
         image = gallery_manager.get_image_by_id(image_id)
         images.append(image)
-    images = images + await find_gallery_images_by_event(event)
-    images: List[ImageMeta] = [image for image in images if image is not None]
+    else:
+        image_id_str = None
+    images.extend(await find_gallery_images_by_event(event))
+    print(images)
+    images: List[ImageMeta] = [i for i in images if i is not None]
     if not images:
         if image_id_str:
             return await MessageBuilder().text(f"没有找到图片ID {image_id_str}").reply_to(event).send(matcher)

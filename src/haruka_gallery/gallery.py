@@ -470,3 +470,8 @@ if gallery_config.enable_whateat:
             gall.update_require_comment(True)
     else:
         gallery_manager.add_gallery(["喝什么"], require_comment=True)
+    if gall := gallery_manager.find_gallery("下午茶"):
+        if not gall.require_comment:
+            gall.update_require_comment(True)
+    else:
+        gallery_manager.add_gallery(["下午茶"], require_comment=True)

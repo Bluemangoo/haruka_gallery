@@ -1,10 +1,13 @@
 import re
+from contextlib import AsyncExitStack
 
-from nonebot import on_command, on_message
-from nonebot.adapters.onebot.v11 import MessageEvent
+from nonebot import on_command, on_message, Bot
+from nonebot.adapters.onebot.v11 import MessageEvent, Event
 from nonebot.internal.matcher import Matcher
+from nonebot.internal.rule import Rule
 from nonebot.params import CommandArg
 from nonebot.rule import startswith
+from nonebot.typing import T_State, T_DependencyCache
 
 from .gallery import gallery_manager, Gallery, ImageMeta, get_random_image
 from .plot import *
@@ -361,7 +364,7 @@ async def move_image(event: MessageEvent, params: str, matcher: type[Matcher]):
     for image_id, image in images:
         if image:
             image.move_to(gallery)
-            message_builder.text(f"已将图片 {image_id} 移动到画廊 {target_gallery_name}。")
+            message_builder.text(f"已将图片 {image.id} 移动到画廊 {target_gallery_name}。")
         else:
             message_builder.text(f"没有找到图片 {image_id}。")
     return await message_builder.send(matcher)
@@ -662,13 +665,24 @@ if gallery_config.enable_whateat:
         rule=startswith("喝什么"),
         priority=8
     )
+    whatafternoon_command = on_message(
+        rule=startswith(
+            (
+                "下午茶吃什么",
+                "吃什么下午茶",
+                "吃什么小蛋糕",
+                "墨菲时间到"
+            )
+        ),
+        priority=8
+    )
 
 
     @whateat_command.handle()
     async def _(event: MessageEvent):
         try:
             text = str(event.get_message()).strip()[3:].strip()
-            await what_eat(event, text, whateat_command, True)
+            await what_eat(event, text, whateat_command, "eat")
         except Exception as e:
             await MessageBuilder().text(f"命令执行出错：{str(e)}").reply_to(event).send(whateat_command)
             raise e
@@ -678,16 +692,44 @@ if gallery_config.enable_whateat:
     async def _(event: MessageEvent):
         try:
             text = str(event.get_message()).strip()[3:].strip()
-            await what_eat(event, text, whatdrink_command, False)
+            await what_eat(event, text, whatdrink_command, "drink")
         except Exception as e:
             await MessageBuilder().text(f"命令执行出错：{str(e)}").reply_to(event).send(whatdrink_command)
             raise e
 
 
-    async def what_eat(event: MessageEvent, params: str, matcher: type[Matcher], eat_or_drint: bool = True):
-        if not params in ["", ".", ",", "。", "，", "？", "?"]:
+    @whatafternoon_command.handle()
+    async def _(event: MessageEvent):
+        try:
+            text = str(event.get_message()).strip()
+            if text.startswith("下午茶吃什么"):
+                text = text[6:].strip()
+            elif text.startswith("吃什么下午茶"):
+                text = text[6:].strip()
+            elif text.startswith("吃什么小蛋糕"):
+                text = text[6:].strip()
+            elif text.startswith("墨菲时间到"):
+                text = text[5:].strip()
+            await what_eat(event, text, whatafternoon_command, "afternoon")
+        except Exception as e:
+            await MessageBuilder().text(f"命令执行出错：{str(e)}").reply_to(event).send(whatafternoon_command)
+            raise e
+
+
+    async def what_eat(event: MessageEvent, params: str, matcher: type[Matcher], type: str):
+        if not params in ["", ".", ",", "。", "，", "？", "?", "!", "！"]:
             return None
-        gallery_name = "吃什么" if eat_or_drint else "喝什么"
+        if type == "eat":
+            gallery_name = "吃什么"
+            action = "吃"
+        elif type == "drink":
+            gallery_name = "喝什么"
+            action = "喝"
+        elif type == "afternoon":
+            gallery_name = "下午茶"
+            action = "吃"
+        else:
+            return None
         gallery = gallery_manager.find_gallery(gallery_name)
         if not gallery:
             return await MessageBuilder().text(f"没有找到画廊 {gallery_name}").reply_to(event).send(matcher)
@@ -696,7 +738,7 @@ if gallery_config.enable_whateat:
             return await MessageBuilder().text(f"画廊 {gallery_name} 中没有图片").reply_to(event).send(matcher)
         image = images[0]
         builder = MessageBuilder().reply_to(event)
-        builder.text(f"🎉{gallery_config.bot_name}建议你{'吃' if eat_or_drint else '喝'}🎉")
+        builder.text(f"🎉{gallery_config.bot_name}建议你{action}🎉")
         builder.text(image.comment)
         builder.image(image)
         return await builder.send(matcher)

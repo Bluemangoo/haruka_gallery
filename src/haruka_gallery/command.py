@@ -1,18 +1,15 @@
 import re
-from contextlib import AsyncExitStack
 
-from nonebot import on_command, on_message, Bot
-from nonebot.adapters.onebot.v11 import MessageEvent, Event
+from nonebot import on_command, on_message
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.internal.matcher import Matcher
-from nonebot.internal.rule import Rule
 from nonebot.params import CommandArg
 from nonebot.rule import startswith
-from nonebot.typing import T_State, T_DependencyCache
 
 from .gallery import gallery_manager, Gallery, ImageMeta, get_random_image
+from .message_builder import MessageBuilder, ForwardMessageBuilder
 from .plot import *
 from .utils import get_images_from_context, download_images, CachedFile, file_cache, ArgParser
-from .message_builder import MessageBuilder, ForwardMessageBuilder
 
 gall_command = on_command("gallery", aliases={"画廊", "gall"}, force_whitespace=True, priority=5)
 kan_command = on_command("看", priority=8)

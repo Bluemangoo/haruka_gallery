@@ -143,7 +143,13 @@ class Gallery:
     def find_same_image(self, image: PathLike | str) -> list['ImageMeta']:
         phash = PhashWrapper.from_image_path(image)
         images = self.list_images()
-        return [img for img in images if img.is_same(phash)]
+        same_images = []
+        for img in images:
+            same, distance = img.check_similarity(phash)
+            if same:
+                same_images.append((img, distance))
+        same_images.sort(key=lambda x: x[1])
+        return [img[0] for img in same_images]
 
     def update_name(self):
         db.execute("update galleries set name=? where id=?", (" ".join(self.name), self.id))
@@ -393,6 +399,10 @@ class ImageMeta:
     def is_same(self, other: PhashWrapper, threshold: int = 5) -> bool:
         distance = self.phash - other
         return distance <= threshold
+
+    def check_similarity(self, other: PhashWrapper, threshold: int = 5) -> Tuple[bool, int]:
+        distance = self.phash - other
+        return distance <= threshold, distance
 
     def get_thumb(self) -> Optional[CachedFile]:
         ext = ".webp"

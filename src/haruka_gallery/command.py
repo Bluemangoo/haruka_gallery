@@ -90,7 +90,7 @@ async def reply_help(_event: MessageEvent, matcher: type[Matcher]):
         "/gall {modify-gallery | 修改画廊} <画 廊名称> [+别名] [-别名] - 修改画廊名称，使用 + 添加别名，- 删除别名\n"
         # "/gall {remove-gallery | 删除画廊} <画廊名称> - 删除指定名称的画廊\n"
         # "/gall {clear | 清空画廊} <画廊名称> - 清空指定画廊中的所有图片\n"
-        "/gall {add | upload | 添加 | 上传} [force | 强制] [skip | 跳过] [gallery] <图片链接或回复图片> - 添加图片到画廊，使用 force 参数可强制添加重复图片\n"
+        "/gall {add | upload | 添加 | 上传} [force | 强制] [skip | 跳过] [replace | 替换] [gallery] <图片链接或回复图片> - 添加图片到画廊，使用 force 参数可强制添加重复图片\n"
         "/gall {modify | 修改} <图片ID> [+#标签 | -#标签 | --tag +标签1 | --tags +标签1,-标签2] [-- 备注] - 修改图片的标签和备注\n"
         "/gall {move | 移动} <目标画廊名称> <图片ID1> <图片ID2> ... - 将指定ID的图片移动到目标画廊\n"
         "/gall {remove | 删除} <图片ID> - 从画廊中删除指定ID的图片\n"
@@ -184,11 +184,13 @@ async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):
     args = ArgParser(params)
     is_force = args.check_and_pop("force") or args.check_and_pop("强制")
     is_skip = args.check_and_pop("skip") or args.check_and_pop("跳过")
+    is_replace = args.check_and_pop("replace") or args.check_and_pop("替换")
     gallery_name = args.pop()
     if gallery_name is None:
         return await reply_help(event, matcher)
     is_force = is_force or args.check_and_pop("force") or args.check_and_pop("强制")
     is_skip = is_skip or args.check_and_pop("skip") or args.check_and_pop("跳过")
+    is_replace = is_replace or args.check_and_pop("replace") or args.check_and_pop("替换")
     gallery: Gallery = gallery_manager.find_gallery(gallery_name)
 
     if not gallery:
@@ -273,11 +275,15 @@ async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):
     all_image_files = [img for img in image_files]
 
     existing_images: list[Tuple[CachedFile, list[ImageMeta]]] = []
+    replaced_images: list[Tuple[CachedFile, ImageMeta]] = []
     if not is_force:
         for image in image_files:
             sames = gallery.find_same_image(image.local_path)
             if sames and len(sames) > 0:
-                existing_images.append((image, sames))
+                if is_replace:
+                    replaced_images.append((image, sames[0]))
+                else:
+                    existing_images.append((image, sames))
 
         existing_image_files = [image for image, _ in existing_images]
         image_files = [image for image in image_files if image not in existing_image_files]
@@ -295,36 +301,53 @@ async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):
         message_builder.text(f"添加的图片附加标签：{', '.join(tags)}。")
     if comment != "":
         message_builder.text(f"添加的图片附加备注：{comment}。")
-    if not is_skip and len(existing_images) > 0:
-        message_builder.text(f"{len(existing_images)} 张图片已存在于画廊 {gallery_name}：")
+    if not is_skip and (len(existing_images) > 0 or len(replaced_images) > 0):
+        if len(existing_images) > 0:
+            message_builder.text(f"{len(existing_images)} 张图片已存在于画廊 {gallery_name}：")
+        if len(replaced_images) > 0:
+            message_builder.text(f"{len(replaced_images)} 张图片已存在于画廊 {gallery_name}，并被替换：")
+
+        canvas_items: List[Tuple[Image, Image, str, str]] = []
+
+        for image, sames in existing_images:
+            img = Image.open(image.local_path)
+            pic = sames[0]
+            img2 = pic.get_image()
+            img2.thumbnail(gallery_config.repeat_image_show_size)
+            canvas_items.append((img, img2, "待上传图片", f"id: {pic.id}"))
+
+        for image, pic in replaced_images:
+            img = Image.open(image.local_path)
+            img2 = pic.get_image()
+            img2.thumbnail(gallery_config.repeat_image_show_size)
+            canvas_items.append((img, img2, "已上传图片", f"被替换id: {pic.id}"))
 
         with Canvas(bg=FillBg((230, 240, 255, 255))).set_padding(8) as canvas:
             with VSplit().set_padding(0).set_sep(16).set_item_align('lt').set_content_align('lt'):
                 TextBox(f"查重错误可使用\"/上传 force\"强制上传图片", TextStyle(DEFAULT_FONT, 16, BLACK))
-                with Grid(row_count=int(math.sqrt(len(existing_images) * 2)), hsep=8, vsep=8).set_item_align(
-                        't').set_content_align('t'):
-                    for image, sames in existing_images:
-                        img = Image.open(image.local_path)
-                        pic = sames[0]
-                        img2 = pic.get_image()
-                        img2.thumbnail(gallery_config.repeat_image_show_size)
+                with Grid(row_count=int(math.sqrt(len(canvas_items) * 2)), hsep=8,
+                          vsep=8).set_item_align(
+                    't').set_content_align('t'):
+                    for image, same, text1, text2 in canvas_items:
                         with HSplit().set_padding(0).set_sep(4):
                             with VSplit().set_padding(0).set_sep(4).set_content_align('c').set_item_align('c'):
-                                ImageBox(image=img, size=gallery_config.repeat_image_show_size,
+                                ImageBox(image=image, size=gallery_config.repeat_image_show_size,
                                          image_size_mode='fit').set_content_align('c')
-                                TextBox(f"待上传图片", TextStyle(DEFAULT_FONT, 16, BLACK))
+                                TextBox(text1, TextStyle(DEFAULT_FONT, 16, BLACK))
                             with VSplit().set_padding(0).set_sep(4).set_content_align('c').set_item_align('c'):
-                                if img2:
-                                    ImageBox(image=img2, size=gallery_config.repeat_image_show_size,
+                                if same:
+                                    ImageBox(image=same, size=gallery_config.repeat_image_show_size,
                                              image_size_mode='fit').set_content_align('c')
                                 else:
                                     Spacer(w=gallery_config.repeat_image_show_size[0],
                                            h=gallery_config.repeat_image_show_size[1])
-                                TextBox(f"id: {pic.id}", TextStyle(DEFAULT_FONT, 16, BLACK))
+                                TextBox(text2, TextStyle(DEFAULT_FONT, 16, BLACK))
         repeat_img = await canvas.get_img()
         file = file_cache.new_file(".png")
         repeat_img.save(file.local_path)
         message_builder.image(file.local_path)
+    for _, image in replaced_images:
+        image.drop()
     await message_builder.send(matcher)
     for image in all_image_files:
         image.mark_used()
@@ -713,16 +736,16 @@ if gallery_config.enable_whateat:
             raise e
 
 
-    async def what_eat(event: MessageEvent, params: str, matcher: type[Matcher], type: str):
+    async def what_eat(event: MessageEvent, params: str, matcher: type[Matcher], command_type: str):
         if not params in ["", ".", ",", "。", "，", "？", "?", "!", "！"]:
             return None
-        if type == "eat":
+        if command_type == "eat":
             gallery_name = "吃什么"
             action = "吃"
-        elif type == "drink":
+        elif command_type == "drink":
             gallery_name = "喝什么"
             action = "喝"
-        elif type == "afternoon":
+        elif command_type == "afternoon":
             gallery_name = "下午茶"
             action = "吃"
         else:

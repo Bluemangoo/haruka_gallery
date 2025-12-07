@@ -276,12 +276,15 @@ async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):
 
     existing_images: list[Tuple[CachedFile, list[ImageMeta]]] = []
     replaced_images: list[Tuple[CachedFile, ImageMeta]] = []
+    replaced_indexes: list[int] = []
+    replaced_images2: list[Tuple[ImageMeta, ImageMeta]] = []
     if not is_force:
-        for image in image_files:
+        for i, image in enumerate(image_files):
             sames = gallery.find_same_image(image.local_path)
             if sames and len(sames) > 0:
                 if is_replace:
                     replaced_images.append((image, sames[0]))
+                    replaced_indexes.append(i)
                 else:
                     existing_images.append((image, sames))
 
@@ -289,9 +292,11 @@ async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):
         image_files = [image for image in image_files if image not in existing_image_files]
 
     image_obj = None
-    for image in image_files:
+    for i, image in enumerate(image_files):
         image_obj = gallery.add_image_unchecked(image.local_path, comment, tags, str(event.user_id),
                                                 file_id=image.extra.get("file_id"))
+        if i in replaced_indexes:
+            replaced_images2.append((image_obj, replaced_images[replaced_indexes.index(i)][1]))
 
     if len(all_image_files) > 0:
         message_builder.text(f"成功添加 {len(image_files)}/{len(all_image_files)} 张图片到画廊 {gallery_name}。")
@@ -316,11 +321,12 @@ async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):
             img2.thumbnail(gallery_config.repeat_image_show_size)
             canvas_items.append((img, img2, "待上传图片", f"id: {pic.id}"))
 
-        for image, pic in replaced_images:
-            img = Image.open(image.local_path)
-            img2 = pic.get_image()
+        for pic_added, pic_exist in replaced_images2:
+            img = pic_added.get_image()
+            img.thumbnail(gallery_config.repeat_image_show_size)
+            img2 = pic_exist.get_image()
             img2.thumbnail(gallery_config.repeat_image_show_size)
-            canvas_items.append((img, img2, "已上传图片", f"被替换id: {pic.id}"))
+            canvas_items.append((img, img2, f"已上传id: {pic_added.id}", f"被替换id: {pic_exist.id}"))
 
         with Canvas(bg=FillBg((230, 240, 255, 255))).set_padding(8) as canvas:
             with VSplit().set_padding(0).set_sep(16).set_item_align('lt').set_content_align('lt'):

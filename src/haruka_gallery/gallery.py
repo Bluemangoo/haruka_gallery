@@ -48,7 +48,7 @@ class GalleryManager:
     @staticmethod
     def get_image_by_id(image_id: int) -> Optional['ImageMeta']:
         cursor = db.execute(
-            "select id, gallery_id, comment, suffix, uploader, phash, file_id, created_at, updated_at from images where id=?",
+            f"select {ImageMeta.row_contents()} from images where id=?",
             (image_id,))
         row = cursor.fetchone()
         if row:
@@ -58,7 +58,7 @@ class GalleryManager:
     @staticmethod
     def get_images_by_file_id(file_id: str) -> list['ImageMeta']:
         cursor = db.execute(
-            "select id, gallery_id, comment, suffix, uploader, phash, file_id, created_at, updated_at from images where file_id=?",
+            f"select {ImageMeta.row_contents()} from images where file_id=?",
             (file_id,))
         rows = cursor.fetchall()
         images = []
@@ -270,7 +270,7 @@ class ImageMeta:
             "insert into images (gallery_id, comment, suffix, uploader, file_id, phash) VALUES (?,?,?,?,?,?)",
             (gallery.id, comment, suffix, uploader, file_id, binary_phash))
         db.commit()
-        cursor = db.execute("select id, created_at from images where id=?", (cursor.lastrowid,))
+        cursor = db.execute("select id, datetime(created_at, 'localtime') from images where id=?", (cursor.lastrowid,))
         row = cursor.fetchone()
         image_id = row[0]
         for tag_id in tag_ids:
@@ -287,6 +287,10 @@ class ImageMeta:
             phash=phash,
             create_time=row[1]
         )
+
+    @staticmethod
+    def row_contents() -> str:
+        return "id, gallery_id, comment, suffix, uploader, phash, file_id, datetime(created_at, 'localtime'), datetime(updated_at, 'localtime')"
 
     @classmethod
     def from_row(cls, row) -> 'ImageMeta':

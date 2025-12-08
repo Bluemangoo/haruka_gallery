@@ -1,3 +1,4 @@
+import io
 import re
 
 from nonebot import on_command, on_message
@@ -349,9 +350,9 @@ async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):
                                            h=gallery_config.repeat_image_show_size[1])
                                 TextBox(text2, TextStyle(DEFAULT_FONT, 16, BLACK))
         repeat_img = await canvas.get_img()
-        file = file_cache.new_file(".png")
-        repeat_img.save(file.local_path)
-        message_builder.image(file.path)
+        file = io.BytesIO()
+        repeat_img.save(file, format="PNG")
+        message_builder.image(file)
     for _, image in replaced_images:
         image.drop()
     await message_builder.send(matcher)
@@ -540,9 +541,9 @@ async def show_all(event: MessageEvent, params: str, matcher: type[Matcher]):
                         Spacer(w=gallery_config.thumbnail_size[0], h=gallery_config.thumbnail_size[1])
                     TextBox(f"id: {image.id}", TextStyle(DEFAULT_FONT, 12, BLACK))
     canvas_image = await canvas.get_img()
-    file = file_cache.new_file(".png")
-    canvas_image.save(file.local_path)
-    message_builder.image(file.path)
+    file = io.BytesIO()
+    canvas_image.save(file, format="PNG")
+    message_builder.image(file)
     return await message_builder.send(matcher)
 
 

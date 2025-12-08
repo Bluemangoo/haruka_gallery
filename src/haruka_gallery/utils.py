@@ -3,6 +3,7 @@ import json
 import mimetypes
 import os
 from datetime import datetime
+from pathlib import Path
 from typing import Optional, Tuple, List
 
 import aiohttp
@@ -43,6 +44,10 @@ class CachedFile:
 
     def __repr__(self):
         return f"<CachedFile url={self.url} local_path={self.local_path} used={self.used} created_at={self.created_at} extra={self.extra} timeout={self.timeout}>"
+
+    @property
+    def path(self):
+        return Path(self.local_path)
 
     def mark_used(self):
         self.used = True

@@ -351,7 +351,7 @@ async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):
         repeat_img = await canvas.get_img()
         file = file_cache.new_file(".png")
         repeat_img.save(file.local_path)
-        message_builder.image(file.local_path)
+        message_builder.image(file.path)
     for _, image in replaced_images:
         image.drop()
     await message_builder.send(matcher)
@@ -542,7 +542,7 @@ async def show_all(event: MessageEvent, params: str, matcher: type[Matcher]):
     canvas_image = await canvas.get_img()
     file = file_cache.new_file(".png")
     canvas_image.save(file.local_path)
-    message_builder.image(file.local_path)
+    message_builder.image(file.path)
     return await message_builder.send(matcher)
 
 

@@ -1,13 +1,13 @@
+import io
 import shutil
 from os import PathLike
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Generator
 
 import imagehash
 from PIL import Image
 from nonebot import logger
 
-from .utils import file_cache, CachedFile
 from .config import gallery_config
 from .data import db
 
@@ -159,6 +159,46 @@ class Gallery:
         db.execute("update galleries set require_comment=? where id=?", (1 if require else 0, self.id))
         db.commit()
         self.require_comment = require
+
+    def iter_images_with_thumbs(self) -> Generator[Tuple['ImageMeta', Image.Image], None, None]:
+        sql = """
+              SELECT i.id, \
+                     i.gallery_id, \
+                     i.comment, \
+                     i.suffix, \
+                     i.uploader, \
+                     i.phash, \
+                     i.file_id, \
+                     i.created_at, \
+                     i.updated_at, \
+                     t.data
+              FROM images i
+                       LEFT JOIN thumbnails t ON i.id = t.image_id
+              WHERE i.gallery_id = ? \
+              """
+
+        cursor = db.execute(sql, (self.id,))
+
+        for row in cursor:
+            meta_row = row[:9]
+            thumb_blob = row[9]
+
+            image_meta = ImageMeta.from_row(meta_row)
+
+            img_obj = None
+
+            if thumb_blob:
+                try:
+                    img_obj = Image.open(io.BytesIO(thumb_blob))
+                    img_obj.load()
+                except Exception as e:
+                    logger.error(f"缩略图数据损坏 {image_meta.id}: {e}")
+                    img_obj = None
+
+            if img_obj is None:
+                img_obj = image_meta.get_thumb_image()
+
+            yield image_meta, img_obj
 
 
 class PhashWrapper:
@@ -408,21 +448,51 @@ class ImageMeta:
         distance = self.phash - other
         return distance <= threshold, distance
 
-    def get_thumb(self) -> Optional[CachedFile]:
-        ext = ".webp"
-        filename = f"{self.id}_thumb"
-        thumb = file_cache.get_file(filename + ext, try_load=True)
-        if thumb:
-            return thumb.renewed().update_timeout(10 * 24 * 3600)
-        try:
-            thumb = file_cache.new_file(filename_without_ext=filename, ext=ext, timeout=24 * 3600)
-            img = Image.open(self.get_image_path()).convert('RGBA')
-            img.thumbnail(gallery_config.thumbnail_size)
-            img.save(thumb.local_path, format='WebP', optimize=True, quality=85)
-            return thumb
-        except Exception as e:
-            logger.warning(f'生成画廊图片 {self.id} 缩略图失败: {e}')
-            return None
+    def get_thumb_image(self) -> Optional[Image.Image]:
+        image_id = self.id
+
+        cursor = db.execute("SELECT data FROM thumbnails WHERE image_id = ?", (image_id,))
+        row = cursor.fetchone()
+
+        thumb_data = None
+
+        if row:
+            thumb_data = row[0]
+        else:
+            try:
+                original_path = self.get_image_path()
+
+                with Image.open(original_path) as img:
+                    img = img.convert('RGBA')
+                    img.thumbnail(gallery_config.thumbnail_size)
+
+                    output_buffer = io.BytesIO()
+                    img.save(output_buffer, format='WebP', optimize=True, quality=85)
+                    thumb_data = output_buffer.getvalue()
+
+                db.execute(
+                    "insert into thumbnails (image_id, data) values (?, ?)",
+                    (image_id, thumb_data)
+                )
+                db.commit()
+
+            except Exception as e:
+                logger.warning(f'生成缩略图失败 {self.id}: {e}')
+                return None
+
+        if thumb_data:
+            try:
+                bio = io.BytesIO(thumb_data)
+                img = Image.open(bio)
+
+                img.load()
+
+                return img
+            except Exception as e:
+                logger.error(f"缩略图数据损坏 {self.id}: {e}")
+                return None
+
+        return None
 
 
 gallery_manager = GalleryManager()

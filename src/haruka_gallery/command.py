@@ -526,20 +526,19 @@ async def show_all(event: MessageEvent, params: str, matcher: type[Matcher]):
     gallery: Gallery = gallery_manager.find_gallery(gallery_name)
     if not gallery:
         return await MessageBuilder().text(f"没有找到画廊 {gallery_name}").reply_to(event).send(matcher)
-    images = gallery.list_images()
+    images = [i for i in gallery.iter_images_with_thumbs()]
 
     message_builder = MessageBuilder().reply_to(event)
     with Canvas(bg=FillBg((230, 240, 255, 255))).set_padding(8) as canvas:
         with Grid(row_count=int(math.sqrt(len(images))), hsep=4, vsep=4):
             for image in images:
-                thumb_file = image.get_thumb()
                 with VSplit().set_padding(0).set_sep(2).set_content_align('c').set_item_align('c'):
-                    if thumb_file:
-                        ImageBox(image=Image.open(thumb_file.local_path), size=gallery_config.thumbnail_size,
+                    if image[1]:
+                        ImageBox(image=image[1], size=gallery_config.thumbnail_size,
                                  image_size_mode='fit').set_content_align('c')
                     else:
                         Spacer(w=gallery_config.thumbnail_size[0], h=gallery_config.thumbnail_size[1])
-                    TextBox(f"id: {image.id}", TextStyle(DEFAULT_FONT, 12, BLACK))
+                    TextBox(f"id: {image[0].id}", TextStyle(DEFAULT_FONT, 12, BLACK))
     canvas_image = await canvas.get_img()
     file = io.BytesIO()
     canvas_image.save(file, format="PNG")

@@ -4,7 +4,7 @@ import mimetypes
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Union, OrderedDict
 
 import aiohttp
 from nonebot import get_bot, logger
@@ -24,6 +24,58 @@ COMMON_IMAGE_EXTS = {
     "image/vnd.microsoft.icon": ".ico",
     "image/svg+xml": ".svg",
 }
+
+
+class FileLRUCache:
+    def __init__(self, max_size_mb: float = 20):
+        self.capacity_bytes = int(max_size_mb * 1024 * 1024)  # mb
+        self.max_file_size = int(self.capacity_bytes / 20)
+        self.current_size = 0
+        self.cache = OrderedDict()
+
+    def __repr__(self):
+        return f"<FileLRUCache current_size={self.current_size} bytes, capacity={self.capacity_bytes} bytes, file_count={len(self.cache)}>"
+
+    @staticmethod
+    def _resolve_path(path: Union[str, Path]) -> Path:
+        return Path(path).resolve()
+
+    def read(self, path: Union[str, Path]) -> bytes:
+        key = self._resolve_path(path)
+
+        if key in self.cache:
+            self.cache.move_to_end(key)
+            return self.cache[key]
+
+        with open(key, 'rb') as f:
+            content = f.read()
+
+        content_size = len(content)
+
+        if content_size > self.max_file_size:
+            return content
+
+        while self.current_size + content_size > self.capacity_bytes:
+            removed_path, removed_content = self.cache.popitem(last=False)
+            self.current_size -= len(removed_content)
+
+        self.cache[key] = content
+        self.current_size += content_size
+
+        return content
+
+    def drop(self, path: Union[str, Path]) -> bool:
+        key = self._resolve_path(path)
+
+        if key in self.cache:
+            content = self.cache.pop(key)
+            self.current_size -= len(content)
+            return True
+        return False
+
+    def clear(self):
+        self.cache.clear()
+        self.current_size = 0
 
 
 class CachedFile:
@@ -72,6 +124,7 @@ class FileCache:
 
     def __init__(self):
         self.files = {}
+        self.memory_lru = FileLRUCache()
         if not os.path.exists(gallery_config.cache_dir):
             os.makedirs(gallery_config.cache_dir)
 
@@ -149,10 +202,28 @@ class FileCache:
             filepath = os.path.join(gallery_config.cache_dir, filename)
             if filepath not in keep_files:
                 try:
+                    self.memory_lru.drop(filepath)
                     os.remove(filepath)
                     logger.debug(f"Removed cached file: {filepath}")
                 except Exception as e:
                     logger.warning(f"Failed to remove cached file {filepath}: {e}")
+
+    def read_content(self, file_or_url: str | CachedFile) -> bytes:
+        target_path = None
+
+        if isinstance(file_or_url, CachedFile):
+            target_path = file_or_url.local_path
+        elif isinstance(file_or_url, str):
+            cf = self.get_file(file_or_url)
+            if cf:
+                target_path = cf.local_path
+            else:
+                target_path = file_or_url
+
+        if target_path and os.path.exists(target_path):
+            return self.memory_lru.read(target_path)
+
+        raise FileNotFoundError(f"File not found: {file_or_url}")
 
 
 file_cache = FileCache()

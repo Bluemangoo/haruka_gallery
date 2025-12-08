@@ -535,7 +535,8 @@ async def show_all(event: MessageEvent, params: str, matcher: type[Matcher]):
                 thumb_file = image.get_thumb()
                 with VSplit().set_padding(0).set_sep(2).set_content_align('c').set_item_align('c'):
                     if thumb_file:
-                        ImageBox(image=Image.open(thumb_file.local_path), size=gallery_config.thumbnail_size,
+                        ImageBox(image=Image.open(io.BytesIO(file_cache.read_content(thumb_file))),
+                                 size=gallery_config.thumbnail_size,
                                  image_size_mode='fit').set_content_align('c')
                     else:
                         Spacer(w=gallery_config.thumbnail_size[0], h=gallery_config.thumbnail_size[1])

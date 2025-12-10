@@ -2,7 +2,7 @@ import io
 import shutil
 from os import PathLike
 from pathlib import Path
-from typing import Optional, Tuple, Generator
+from typing import Optional, Tuple, Generator, Callable
 
 import imagehash
 from PIL import Image
@@ -114,7 +114,7 @@ class Gallery:
 
     def list_images(self) -> list['ImageMeta']:
         cursor = db.execute(
-            "select id, gallery_id, comment, suffix, uploader, phash, file_id, created_at, updated_at from images where gallery_id=?",
+            f"select {ImageMeta.row_contents()} from images where gallery_id=?",
             (self.id,))
         rows = cursor.fetchall()
         images = []
@@ -161,20 +161,11 @@ class Gallery:
         self.require_comment = require
 
     def iter_images_with_thumbs(self) -> Generator[Tuple['ImageMeta', Image.Image], None, None]:
-        sql = """
-              SELECT i.id, \
-                     i.gallery_id, \
-                     i.comment, \
-                     i.suffix, \
-                     i.uploader, \
-                     i.phash, \
-                     i.file_id, \
-                     i.created_at, \
-                     i.updated_at, \
-                     t.data
-              FROM images i
-                       LEFT JOIN thumbnails t ON i.id = t.image_id
-              WHERE i.gallery_id = ? \
+        sql = f"""
+              select {ImageMeta.row_contents(lambda x: 'i.' + x)}, t.data 
+              from images i
+                    left join thumbnails t on i.id = t.image_id
+              where i.gallery_id = ? 
               """
 
         cursor = db.execute(sql, (self.id,))
@@ -329,8 +320,18 @@ class ImageMeta:
         )
 
     @staticmethod
-    def row_contents() -> str:
-        return "id, gallery_id, comment, suffix, uploader, phash, file_id, datetime(created_at, 'localtime'), datetime(updated_at, 'localtime')"
+    def row_contents(f: Optional[Callable[[str], str]] = None) -> str:
+        fields = []
+        raw_fields = ["id", "gallery_id", "comment", "suffix", "uploader", "phash", "file_id"]
+        tz_fields = ["created_at", "updated_at"]
+        if f:
+            raw_fields = [f(field) for field in raw_fields]
+        if f:
+            tz_fields = [f(field) for field in tz_fields]
+        tz_fields = [f"datetime({field}, 'localtime')" for field in tz_fields]
+        fields.extend(raw_fields)
+        fields.extend(tz_fields)
+        return ", ".join(fields)
 
     @classmethod
     def from_row(cls, row) -> 'ImageMeta':
@@ -525,7 +526,7 @@ def get_random_image(gallery: Optional[Gallery], tags: Optional[list[str]] = Non
     search_gallery = "and i.gallery_id = ?" if gallery is not None else ""
     gallery_param = [gallery.id] if gallery is not None else []
     cursor = db.execute(f"""
-        select i.id, i.gallery_id, i.comment, i.suffix, i.uploader, i.phash, i.file_id, i.created_at, i.updated_at
+        select {ImageMeta.row_contents(lambda x: 'i.' + x)}
         from images i
         where
             1 = 1 

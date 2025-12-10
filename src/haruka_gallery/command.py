@@ -317,6 +317,7 @@ async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):
 
         for image, sames in existing_images:
             img = Image.open(image.local_path)
+            img.thumbnail(gallery_config.repeat_image_show_size)
             pic = sames[0]
             img2 = pic.get_image()
             img2.thumbnail(gallery_config.repeat_image_show_size)

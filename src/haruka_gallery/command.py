@@ -177,7 +177,7 @@ async def list_galleries(event: MessageEvent, _param: str, matcher: type[Matcher
     message_builder = MessageBuilder()
     message_builder.text(f"当前画廊列表({len(galleries)})：")
     for gallery in galleries:
-        message_builder.text(f"- {' / '.join(gallery.name)} (图片数量: {gallery.count_images()})")
+        message_builder.text(f"- (#{gallery.id}){' / '.join(gallery.name)} (图片数量: {gallery.count_images()})")
     return await ForwardMessageBuilder().node(message_builder).send(matcher)
 
 

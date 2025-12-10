@@ -33,7 +33,7 @@ class MessageBuilder:
                 self.text(text, newline=newline)
         return self
 
-    def image(self, file: Optional[Union[str, bytes, io.BytesIO, Path, ImageMeta]]):
+    def image(self, file: Optional[Union[str, bytes, io.BytesIO, Path, ImageMeta]], is_raw: bool = False):
         if file is None:
             return self
 
@@ -56,10 +56,11 @@ class MessageBuilder:
                 file.drop()
                 return self
 
-            if file.file_id:
+            if not is_raw and file.file_id:
                 segment_to_send = MessageSegment.image(file=file.file_id)
             else:
-                self.have_non_file_id_image = True
+                if not is_raw:
+                    self.have_non_file_id_image = True
                 if file.suffix == ".gif":
                     file_content = path_obj.read_bytes()
                     segment_to_send = MessageSegment.image(file=file_content)

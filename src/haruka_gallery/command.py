@@ -10,7 +10,7 @@ from nonebot.rule import startswith
 from .gallery import gallery_manager, Gallery, ImageMeta, get_random_image
 from .message_builder import MessageBuilder, ForwardMessageBuilder
 from .plot import *
-from .utils import get_images_from_context, download_images, CachedFile, file_cache, ArgParser
+from .utils import get_images_from_context, download_images, CachedFile, ArgParser
 
 gall_command = on_command("gallery", aliases={"画廊", "gall"}, force_whitespace=True, priority=5)
 kan_command = on_command("看", priority=8)
@@ -415,6 +415,7 @@ async def random_image(event: MessageEvent, params: str, matcher: type[Matcher])
     count_str = ""
     comment = None
     with_details = False
+    is_raw = False
     while current := args.peek():
         if current == "--tag":
             args.pop()
@@ -437,6 +438,9 @@ async def random_image(event: MessageEvent, params: str, matcher: type[Matcher])
         elif current == "--details":
             args.pop()
             with_details = True
+        elif current == "--raw":
+            args.pop()
+            is_raw = True
         elif current == "--":
             args.pop()
             comment = args.pop_all()
@@ -484,7 +488,7 @@ async def random_image(event: MessageEvent, params: str, matcher: type[Matcher])
             image = images[0]
             push_details(builder, image)
     for image in images:
-        builder.image(image)
+        builder.image(image, is_raw=is_raw)
     return await builder.send(matcher)
 
 
@@ -493,6 +497,9 @@ async def show_image(event: MessageEvent, params: str, matcher: type[Matcher]):
     require_details = "--details" in ids
     if require_details:
         ids.remove("--details")
+    is_raw = "--raw" in ids
+    if is_raw:
+        ids.remove("--raw")
     ids = [id_str for id_str in ids if id_str.strip() != ""]
     images = []
     message_builder = MessageBuilder().reply_to(event)
@@ -514,7 +521,7 @@ async def show_image(event: MessageEvent, params: str, matcher: type[Matcher]):
     if len(undefined_ids) > 0:
         message_builder.text(f"未找到图片ID：{', '.join(undefined_ids)}。")
     for image in images:
-        message_builder.image(image)
+        message_builder.image(image, is_raw=is_raw)
     return await message_builder.send(matcher)
 
 

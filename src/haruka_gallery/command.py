@@ -19,68 +19,59 @@ upload_command = on_command("upload", force_whitespace=True, priority=5)
 
 
 @gall_command.handle()
-async def _(event: MessageEvent, args=CommandArg()):
+async def _(event: MessageEvent, matcher: type[Matcher], args=CommandArg()):
     try:
         text: str = args.extract_plain_text().strip()
         subcommand, *params = text.split(" ", 1)
         params = params[0] if params else ""
         if subcommand == "add" or subcommand == "upload" or subcommand == "添加" or subcommand == "上传":
-            return await add_image(event, params, gall_command)
+            return await add_image(event, params, matcher)
         if subcommand == "remove" or subcommand == "删除":
-            return await remove_image(event, params, gall_command)
+            return await remove_image(event, params, matcher)
         if subcommand == "modify" or subcommand == "修改":
-            return await modify_image(event, params, gall_command)
+            return await modify_image(event, params, matcher)
         if subcommand == "move" or subcommand == "移动":
-            return await move_image(event, params, gall_command)
+            return await move_image(event, params, matcher)
         if subcommand == "show" or subcommand == "查看" or subcommand == "看":
-            return await random_image(event, params, gall_command)
+            return await random_image(event, params, matcher)
         if subcommand == "show-all" or subcommand == "查看全部" or subcommand == "看全部" or subcommand == "查看所有" or subcommand == "看所有":
-            return await show_all(event, params, gall_command)
+            return await show_all(event, params, matcher)
         if subcommand == "details" or subcommand == "详情":
-            return await show_details(event, params, gall_command)
+            return await show_details(event, params, matcher)
         if subcommand == "add-gallery" or subcommand == "创建画廊":
-            return await add_gallery(event, params, gall_command)
+            return await add_gallery(event, params, matcher)
         if subcommand == "modify-gallery" or subcommand == "修改画廊":
-            return await modify_gallery(event, params, gall_command)
+            return await modify_gallery(event, params, matcher)
         if subcommand == "remove-gallery" or subcommand == "删除画廊":
-            return await remove_gallery(event, params, gall_command)
+            return await remove_gallery(event, params, matcher)
         if subcommand == "list-gallery" or subcommand == "list-galleries" or subcommand == "列出画廊":
-            return await list_galleries(event, params, gall_command)
+            return await list_galleries(event, params, matcher)
         if subcommand == "clear" or subcommand == "清空画廊":
-            return await clear_gallery(event, params, gall_command)
-        return await reply_help(event, gall_command)
+            return await clear_gallery(event, params, matcher)
+        return await reply_help(event, matcher)
     except Exception as e:
-        await MessageBuilder().text(f"命令执行出错：{str(e)}").reply_to(event).send(gall_command)
+        await MessageBuilder().text(f"命令执行出错：{str(e)}").reply_to(event).send(matcher)
         raise e
 
 
 @kan_command.handle()
-async def _(event: MessageEvent, args=CommandArg()):
+async def _(event: MessageEvent, matcher: type[Matcher], args=CommandArg()):
     try:
         text: str = args.extract_plain_text().strip()
-        await random_image(event, text, kan_command)
+        await random_image(event, text, matcher)
     except Exception as e:
-        await MessageBuilder().text(f"命令执行出错：{str(e)}").reply_to(event).send(kan_command)
+        await MessageBuilder().text(f"命令执行出错：{str(e)}").reply_to(event).send(matcher)
         raise e
 
 
 @shangchuan_command.handle()
-async def _(event: MessageEvent, args=CommandArg()):
-    try:
-        text: str = args.extract_plain_text().strip()
-        await add_image(event, text, shangchuan_command)
-    except Exception as e:
-        await MessageBuilder().text(f"命令执行出错：{str(e)}").reply_to(event).send(shangchuan_command)
-        raise e
-
-
 @upload_command.handle()
-async def _(event: MessageEvent, args=CommandArg()):
+async def _(event: MessageEvent, matcher: type[Matcher], args=CommandArg()):
     try:
         text: str = args.extract_plain_text().strip()
-        await add_image(event, text, upload_command)
+        await add_image(event, text, matcher)
     except Exception as e:
-        await MessageBuilder().text(f"命令执行出错：{str(e)}").reply_to(event).send(upload_command)
+        await MessageBuilder().text(f"命令执行出错：{str(e)}").reply_to(event).send(matcher)
         raise e
 
 
@@ -182,6 +173,10 @@ async def list_galleries(event: MessageEvent, _param: str, matcher: type[Matcher
 
 
 async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):
+    warnings = set()
+    if "＃" in params:
+        params = params.replace("＃", "#")
+        warnings.add("检测到全角井号＃，已自动替换为半角#")
     args = ArgParser(params)
     is_force = args.check_and_pop("force") or args.check_and_pop("强制")
     is_skip = args.check_and_pop("skip") or args.check_and_pop("跳过")
@@ -200,7 +195,6 @@ async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):
     tags = []
     unknown_args = []
     comment = ""
-    warnings = set()
     while current := args.peek():
         if current == "--tag":
             args.pop()
@@ -399,6 +393,10 @@ async def move_image(event: MessageEvent, params: str, matcher: type[Matcher]):
 
 
 async def random_image(event: MessageEvent, params: str, matcher: type[Matcher]):
+    warnings = set()
+    if "＃" in params:
+        params = params.replace("＃", "#")
+        warnings.add("检测到全角井号＃，已自动替换为半角#")
     args = ArgParser(params)
     if args.peek(2) == "全部" or args.peek(2) == "所有":
         args.pop(2)
@@ -480,6 +478,8 @@ async def random_image(event: MessageEvent, params: str, matcher: type[Matcher])
         return await MessageBuilder().text(f"画廊 {gallery_name} 中没有图片").reply_to(event).send(matcher)
 
     builder = MessageBuilder().reply_to(event)
+    for warning in warnings:
+        builder.text(f"警告：{warning}。")
     if len(unknown_args) > 0:
         builder.text(f"未知参数：{' '.join(unknown_args)}。")
     if with_details:
@@ -555,6 +555,10 @@ async def show_all(event: MessageEvent, params: str, matcher: type[Matcher]):
 
 
 async def modify_image(event: MessageEvent, params: str, matcher: type[Matcher]):
+    warnings = set()
+    if "＃" in params:
+        params = params.replace("＃", "#")
+        warnings.add("检测到全角井号＃，已自动替换为半角#")
     args = ArgParser(params)
     image_id_str = args.peek()
     images = []
@@ -576,7 +580,6 @@ async def modify_image(event: MessageEvent, params: str, matcher: type[Matcher])
     comment: Optional[str] = None
 
     unknown_args = []
-    warnings = set()
     proc_tag = []
 
     while current := args.peek():

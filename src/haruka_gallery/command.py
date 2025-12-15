@@ -19,7 +19,7 @@ upload_command = on_command("upload", force_whitespace=True, priority=5)
 
 
 @gall_command.handle()
-async def _(event: MessageEvent, matcher: type[Matcher], args=CommandArg()):
+async def _(event: MessageEvent, matcher: Matcher, args=CommandArg()):
     try:
         text: str = args.extract_plain_text().strip()
         subcommand, *params = text.split(" ", 1)
@@ -55,10 +55,11 @@ async def _(event: MessageEvent, matcher: type[Matcher], args=CommandArg()):
 
 
 @kan_command.handle()
-async def _(event: MessageEvent, matcher: type[Matcher], args=CommandArg()):
+async def _(event: MessageEvent, matcher: Matcher, args=CommandArg()):
     try:
         text: str = args.extract_plain_text().strip()
         await random_image(event, text, matcher)
+        print(matcher)
     except Exception as e:
         await MessageBuilder().text(f"命令执行出错：{str(e)}").reply_to(event).send(matcher)
         raise e
@@ -66,7 +67,7 @@ async def _(event: MessageEvent, matcher: type[Matcher], args=CommandArg()):
 
 @shangchuan_command.handle()
 @upload_command.handle()
-async def _(event: MessageEvent, matcher: type[Matcher], args=CommandArg()):
+async def _(event: MessageEvent, matcher: Matcher, args=CommandArg()):
     try:
         text: str = args.extract_plain_text().strip()
         await add_image(event, text, matcher)
@@ -75,7 +76,7 @@ async def _(event: MessageEvent, matcher: type[Matcher], args=CommandArg()):
         raise e
 
 
-async def reply_help(_event: MessageEvent, matcher: type[Matcher]):
+async def reply_help(_event: MessageEvent, matcher: Matcher):
     help_text = (
         "画廊命令帮助 (/gall /gallery /画廊)：\n"
         "/gall {add-gallery | 创建画廊} <画廊名称> - 创建一个新的画廊，提供多个名称则作为别名\n"
@@ -98,7 +99,7 @@ async def reply_help(_event: MessageEvent, matcher: type[Matcher]):
     return await ForwardMessageBuilder().node(MessageBuilder().text(help_text)).send(matcher)
 
 
-async def add_gallery(event: MessageEvent, params: str, matcher: type[Matcher]):
+async def add_gallery(event: MessageEvent, params: str, matcher: Matcher):
     gallery_names: list[str] = params.split(" ")
     if len(gallery_names) == 0:
         return await reply_help(event, matcher)
@@ -111,7 +112,7 @@ async def add_gallery(event: MessageEvent, params: str, matcher: type[Matcher]):
         return await MessageBuilder().text(f"成功创建画廊 {params}").reply_to(event).send(matcher)
 
 
-async def clear_gallery(event: MessageEvent, params: str, matcher: type[Matcher]):
+async def clear_gallery(event: MessageEvent, params: str, matcher: Matcher):
     args = ArgParser(params)
     gallery_name = args.pop()
     if gallery_name is None:
@@ -122,7 +123,7 @@ async def clear_gallery(event: MessageEvent, params: str, matcher: type[Matcher]
     return await MessageBuilder().text(f"已清空画廊 {gallery_name} 中的所有图片").reply_to(event).send(matcher)
 
 
-async def modify_gallery(event: MessageEvent, params: str, matcher: type[Matcher]):
+async def modify_gallery(event: MessageEvent, params: str, matcher: Matcher):
     args = ArgParser(params)
     gallery_name = args.pop()
     if gallery_name is None:
@@ -148,7 +149,7 @@ async def modify_gallery(event: MessageEvent, params: str, matcher: type[Matcher
     return await MessageBuilder().text(f"已修改画廊名称为：{' '.join(gallery.name)}").reply_to(event).send(matcher)
 
 
-async def remove_gallery(event: MessageEvent, params: str, matcher: type[Matcher]):
+async def remove_gallery(event: MessageEvent, params: str, matcher: Matcher):
     gallery_name = params.strip()
     if gallery_name == "":
         return await reply_help(event, matcher)
@@ -161,7 +162,7 @@ async def remove_gallery(event: MessageEvent, params: str, matcher: type[Matcher
     return await MessageBuilder().text(f"已删除画廊 {gallery_name}").reply_to(event).send(matcher)
 
 
-async def list_galleries(event: MessageEvent, _param: str, matcher: type[Matcher]):
+async def list_galleries(event: MessageEvent, _param: str, matcher: Matcher):
     galleries = gallery_manager.galleries
     if len(galleries) == 0:
         return await MessageBuilder().text("当前没有任何画廊").reply_to(event).send(matcher)
@@ -172,7 +173,7 @@ async def list_galleries(event: MessageEvent, _param: str, matcher: type[Matcher
     return await ForwardMessageBuilder().node(message_builder).send(matcher)
 
 
-async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):
+async def add_image(event: MessageEvent, params: str, matcher: Matcher):
     warnings = set()
     if "＃" in params:
         params = params.replace("＃", "#")
@@ -356,7 +357,7 @@ async def add_image(event: MessageEvent, params: str, matcher: type[Matcher]):
     return None
 
 
-async def remove_image(event: MessageEvent, params: str, matcher: type[Matcher]):
+async def remove_image(event: MessageEvent, params: str, matcher: Matcher):
     args = ArgParser(params)
     images = await find_gallery_images_by_arg_or_event(args, event)
     message_builder = MessageBuilder().reply_to(event)
@@ -373,7 +374,7 @@ async def remove_image(event: MessageEvent, params: str, matcher: type[Matcher])
     return await message_builder.send(matcher)
 
 
-async def move_image(event: MessageEvent, params: str, matcher: type[Matcher]):
+async def move_image(event: MessageEvent, params: str, matcher: Matcher):
     args = ArgParser(params)
     message_builder = MessageBuilder().reply_to(event)
     target_gallery_name = args.pop()
@@ -392,7 +393,7 @@ async def move_image(event: MessageEvent, params: str, matcher: type[Matcher]):
     return await message_builder.send(matcher)
 
 
-async def random_image(event: MessageEvent, params: str, matcher: type[Matcher]):
+async def random_image(event: MessageEvent, params: str, matcher: Matcher):
     warnings = set()
     if "＃" in params:
         params = params.replace("＃", "#")
@@ -493,7 +494,7 @@ async def random_image(event: MessageEvent, params: str, matcher: type[Matcher])
     return await builder.send(matcher)
 
 
-async def show_image(event: MessageEvent, params: str, matcher: type[Matcher]):
+async def show_image(event: MessageEvent, params: str, matcher: Matcher):
     ids = params.split(" ")
     require_details = "--details" in ids
     if require_details:
@@ -526,7 +527,7 @@ async def show_image(event: MessageEvent, params: str, matcher: type[Matcher]):
     return await message_builder.send(matcher)
 
 
-async def show_all(event: MessageEvent, params: str, matcher: type[Matcher]):
+async def show_all(event: MessageEvent, params: str, matcher: Matcher):
     arg = ArgParser(params)
     gallery_name = arg.pop()
     if gallery_name is None:
@@ -554,7 +555,7 @@ async def show_all(event: MessageEvent, params: str, matcher: type[Matcher]):
     return await message_builder.send(matcher)
 
 
-async def modify_image(event: MessageEvent, params: str, matcher: type[Matcher]):
+async def modify_image(event: MessageEvent, params: str, matcher: Matcher):
     warnings = set()
     if "＃" in params:
         params = params.replace("＃", "#")
@@ -677,7 +678,7 @@ async def modify_image(event: MessageEvent, params: str, matcher: type[Matcher])
     return await message_builder.send(matcher)
 
 
-async def show_details(event: MessageEvent, params: str, matcher: type[Matcher]):
+async def show_details(event: MessageEvent, params: str, matcher: Matcher):
     arg = ArgParser(params)
     image_id_str = arg.peek()
     image = await find_gallery_image_by_arg_or_event(arg, event)
@@ -753,7 +754,7 @@ if gallery_config.enable_whateat:
             raise e
 
 
-    async def what_eat(event: MessageEvent, params: str, matcher: type[Matcher], command_type: str):
+    async def what_eat(event: MessageEvent, params: str, matcher: Matcher, command_type: str):
         if not params in ["", ".", ",", "。", "，", "？", "?", "!", "！"]:
             return None
         if command_type == "eat":

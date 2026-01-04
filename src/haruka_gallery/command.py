@@ -94,7 +94,9 @@ async def reply_help(_event: MessageEvent, matcher: Matcher):
         "\n"
         "alias：\n"
         "/看 - /gall show\n"
-        "/上传 - /gall add"
+        "/上传 - /gall add\n"
+        "\n"
+        "详细用法请参考：https://github.com/Bluemangoo/haruka_gallery"
     )
     return await ForwardMessageBuilder().node(MessageBuilder().text(help_text)).send(matcher)
 

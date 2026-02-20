@@ -62,3 +62,4 @@ python import_from_file.py <proj_root> <gallery_name> <file_dir> [--comment]
 - `gallery_name`：画廊名称
 - `file_dir`：文件夹路径
 - `--comment`：是否将文件名作为备注
+- `--force`：是否跳过相似度检查直接导入（不推荐）

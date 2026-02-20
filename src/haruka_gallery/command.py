@@ -89,7 +89,7 @@ async def reply_help(_event: MessageEvent, matcher: Matcher):
         "/gall {remove | 删除} <图片ID> - 从画廊中删除指定ID的图片\n"
         "/gall {show | 查看 | 看} {<画廊名称> | *} [筛选条件] [数量] - 随机查看画廊中的图片，*则从所有画廊，筛选条件可使用 [#标签 | --tag 标签 | --tags 标签1,标签2] [-- 备注]，数量可使用 xN 或 N 表示 (需要在备注前面)\n"
         "/gall {show | 查看 | 看} <图片ID1> <图片ID2> ... - 查看指定ID的图片\n"
-        "/gall {show-all | 查看全部 | 看全部} <画廊名称> - 查看画廊中的所有图片缩略图\n"
+        "/gall {show-all | 查看全部 | 看全部} {<画廊名称> | *} [筛选条件] - 查看画廊中的所有图片缩略图\n"
         "/gall {details | 详情} <图片ID> - 查看指定ID图片的详细信息\n"
         "\n"
         "alias：\n"

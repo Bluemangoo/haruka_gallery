@@ -7,7 +7,7 @@ from nonebot.internal.matcher import Matcher
 from nonebot.params import CommandArg
 from nonebot.rule import startswith
 
-from .gallery import gallery_manager, Gallery, ImageMeta, get_random_image
+from .gallery import gallery_manager, Gallery, ImageMeta, get_random_image, get_all_image
 from .message_builder import MessageBuilder, ForwardMessageBuilder
 from .plot import *
 from .utils import get_images_from_context, download_images, CachedFile, ArgParser
@@ -401,14 +401,16 @@ async def random_image(event: MessageEvent, params: str, matcher: Matcher):
         params = params.replace("＃", "#")
         warnings.add("检测到全角井号＃，已自动替换为半角#")
     args = ArgParser(params)
+    need_all = False
     if args.peek(2) == "全部" or args.peek(2) == "所有":
         args.pop(2)
-        return await show_all(event, args.pop_all(), matcher)
+        need_all = True
+        # return await show_all(event, args.pop_all(), matcher)
     gallery_name = args.pop()
     if gallery_name is None:
         return await reply_help(event, matcher)
 
-    if gallery_name.isdigit():
+    if not need_all and gallery_name.isdigit():
         return await show_image(event, params, matcher)
     unknown_args = []
     tags = []
@@ -452,7 +454,7 @@ async def random_image(event: MessageEvent, params: str, matcher: Matcher):
             if tag.strip() != "":
                 tags.append(tag)
                 continue
-        else:
+        elif not need_all:
             if count_str != "":
                 unknown_args.append(count_str)
             count_str = args.pop()
@@ -465,6 +467,10 @@ async def random_image(event: MessageEvent, params: str, matcher: Matcher):
                 count_str = ""
                 continue
             count = int(s)
+        else:
+            unknown_args.append(args.pop())
+
+    comment = comment.strip() if comment else None
     gallery: Gallery | None = None
     if gallery_name != "*":
         gallery: Gallery = gallery_manager.find_gallery(gallery_name)
@@ -472,9 +478,17 @@ async def random_image(event: MessageEvent, params: str, matcher: Matcher):
         if not gallery:
             return await MessageBuilder().text(f"没有找到画廊 {gallery_name}").reply_to(event).send(matcher)
 
+    if need_all and gallery_name == "*" and len(tags) == 0 and comment is None:
+        return await MessageBuilder().text("参数不足，查看全部需要指定至少一个筛选条件").reply_to(event).send(matcher)
+
+    # 看全部则 count 一定是 1 不会出问题
     if count > gallery_config.random_image_limit:
         return await MessageBuilder().text(f"单次查看图片数量不能超过 {gallery_config.random_image_limit} 张").reply_to(
             event).send(matcher)
+
+    if need_all:
+        images = get_all_image(gallery, tags=tags, comment=comment)
+        return await show_all(event, images, matcher)
 
     images = get_random_image(gallery, tags=tags, comment=comment, count=count)
     if len(images) == 0:
@@ -529,15 +543,8 @@ async def show_image(event: MessageEvent, params: str, matcher: Matcher):
     return await message_builder.send(matcher)
 
 
-async def show_all(event: MessageEvent, params: str, matcher: Matcher):
-    arg = ArgParser(params)
-    gallery_name = arg.pop()
-    if gallery_name is None:
-        return await reply_help(event, matcher)
-    gallery: Gallery = gallery_manager.find_gallery(gallery_name)
-    if not gallery:
-        return await MessageBuilder().text(f"没有找到画廊 {gallery_name}").reply_to(event).send(matcher)
-    images = [i for i in gallery.iter_images_with_thumbs()]
+async def show_all(event: MessageEvent, images: list[ImageMeta], matcher: Matcher):
+    images = [(i, i.get_thumb_image()) for i in images]
 
     message_builder = MessageBuilder().reply_to(event)
     with Canvas(bg=FillBg((230, 240, 255, 255))).set_padding(8) as canvas:

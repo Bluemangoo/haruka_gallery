@@ -756,7 +756,7 @@ if gallery_config.enable_whateat:
             raise e
 
 
-    async def what_eat(event: MessageEvent, params: str, matcher: Matcher, command_type: str):
+    async def what_eat(event: MessageEvent, params: str, matcher: Matcher | type['Matcher'], command_type: str):
         if not params in ["", ".", ",", "。", "，", "？", "?", "!", "！"]:
             return None
         if command_type == "eat":
@@ -816,7 +816,24 @@ async def find_gallery_image_by_arg_or_event(arg_parser: ArgParser, event: Messa
 async def find_gallery_images_by_arg_or_event(arg_parser: ArgParser, event: MessageEvent) -> list[
     tuple[str, ImageMeta]]:
     image_ids = arg_parser.pop_all().split(" ")
-    image_ids = [i for i in image_ids if i.strip()]
+    image_ids_copy: list[str] = image_ids
+    image_ids = []
+    for image_id_str in image_ids_copy:
+        if not image_id_str.strip():
+            continue
+        if '-' in image_id_str:
+            parts = image_id_str.split('-')
+            if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+                start_id = int(parts[0])
+                end_id = int(parts[1])
+                if start_id > end_id:
+                    start_id, end_id = end_id, start_id
+                image_ids.extend([str(i) for i in range(start_id, end_id + 1)])
+            else:
+                image_ids.append(image_id_str)
+        else:
+            image_ids.append(image_id_str)
+
     images = [(image_id, gallery_manager.get_image_by_id(image_id)) for image_id in image_ids]
     images.extend([("", image) for image in await find_gallery_images_by_event(event)])
     return images

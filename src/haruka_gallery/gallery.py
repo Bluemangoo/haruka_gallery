@@ -1,4 +1,5 @@
 import io
+import json
 import shutil
 from os import PathLike
 from pathlib import Path
@@ -44,6 +45,47 @@ class GalleryManager:
             if gallery.id == gallery_id:
                 return gallery
         return None
+
+    def set_filters(self, name: str, filters: 'GalleryFilter'):
+        if self.check_exists(name):
+            raise ValueError(f"Gallery with name {name} already exists.")
+        cursor = db.execute("select id from aliases where name=?", (name,))
+        row = cursor.fetchone()
+        if row:
+            db.execute("update aliases set gallery=?, tags=?, comment=? where id=?",
+                       (filters.gallery, json.dumps(filters.tags), filters.comment, row[0]))
+        else:
+            db.execute("insert into aliases (name, gallery, tags, comment) VALUES (?,?,?,?)",
+                       (name, filters.gallery, json.dumps(filters.tags), filters.comment))
+        db.commit()
+
+    @staticmethod
+    def get_filters(name: str) -> 'GalleryFilter':
+        cursor = db.execute("select gallery, tags, comment from aliases where name=?", (name,))
+        row = cursor.fetchone()
+        if row:
+            return GalleryFilter(gallery=row[0], tags=json.loads(row[1]), comment=row[2])
+        return GalleryFilter(gallery=name, tags=[], comment=None)
+
+    @staticmethod
+    def check_filter_exists(name: str) -> bool:
+        cursor = db.execute("select id from aliases where name=?", (name,))
+        row = cursor.fetchone()
+        return row is not None
+
+    @staticmethod
+    def list_filters() -> dict[str, 'GalleryFilter']:
+        cursor = db.execute("select name, gallery, tags, comment from aliases")
+        rows = cursor.fetchall()
+        filters = {}
+        for row in rows:
+            filters[row[0]]=(GalleryFilter(gallery=row[1], tags=json.loads(row[2]), comment=row[3]))
+        return filters
+
+    @staticmethod
+    def remove_filters(name: str):
+        db.execute("delete from aliases where name=?", (name,))
+        db.commit()
 
     @staticmethod
     def get_image_by_id(image_id: int) -> Optional['ImageMeta']:
@@ -496,9 +538,22 @@ class ImageMeta:
         return None
 
 
+class GalleryFilter:
+    gallery: str
+    tags: list[str]
+    comment: Optional[str]
+
+    def __init__(self, gallery: str, tags: list[str], comment: Optional[str]):
+        self.gallery = gallery
+        self.tags = tags
+        self.comment = comment
+
+
 gallery_manager = GalleryManager()
 
-def get_all_image(gallery: Optional[Gallery], tags: Optional[list[str]] = None, comment: Optional[str] = None) -> list[ImageMeta]:
+
+def get_all_image(gallery: Optional[Gallery], tags: Optional[list[str]] = None, comment: Optional[str] = None) -> list[
+    ImageMeta]:
     if tags is None:
         tags = []
     tag_ids_res = ImageMeta.get_tags(tags)
@@ -539,6 +594,7 @@ def get_all_image(gallery: Optional[Gallery], tags: Optional[list[str]] = None, 
         image_meta = ImageMeta.from_row(row)
         images.append(image_meta)
     return images
+
 
 def get_random_image(gallery: Optional[Gallery], tags: Optional[list[str]] = None, comment: Optional[str] = None,
                      count: int = 1) -> list[ImageMeta]:

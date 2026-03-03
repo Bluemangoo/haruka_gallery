@@ -40,3 +40,12 @@ create table tags
     id   integer primary key autoincrement,
     name varchar(100) unique not null
 );
+
+create table aliases
+(
+    id      integer primary key autoincrement,
+    name    text not null,
+    gallery text not null,
+    tags    text not null,
+    comment text
+);

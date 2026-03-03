@@ -6,7 +6,7 @@ from .config import gallery_config
 if not gallery_config.data_dir.exists():
     gallery_config.data_dir.mkdir(parents=True, exist_ok=True)
 db = sqlite3.connect(gallery_config.data_dir / "images.db")
-DB_VERSION = 3
+DB_VERSION = 4
 
 try:
     cursor = db.execute("SELECT version FROM meta LIMIT 1")
@@ -26,6 +26,7 @@ migration_map = {
     0: "init.sql",
     1: "migrate_1_2.sql",
     2: "migrate_2_3.sql",
+    3: "migrate_3_4.sql",
 }
 
 while current_version < DB_VERSION:

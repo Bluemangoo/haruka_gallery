@@ -66,8 +66,8 @@ class MessageBuilder:
                     segment_to_send = MessageSegment.image(file=file_content)
                 else:
                     segment_to_send = MessageSegment.image(file=path_obj)
-                if file.comment != "":
-                    segment_to_send.data["summary"] = f"[{file.comment}]"
+            if file.comment != "":
+                segment_to_send.data["summary"] = f"[{file.comment}]"
         else:
             segment_to_send = MessageSegment.image(file=file)
 

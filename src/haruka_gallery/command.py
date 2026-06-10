@@ -1,5 +1,6 @@
 import io
 import re
+from enum import Enum
 
 from nonebot import on_command, on_message
 from nonebot.adapters.onebot.v11 import MessageEvent
@@ -86,11 +87,11 @@ async def reply_help(_event: MessageEvent, matcher: Matcher):
     help_text = (
         "画廊命令帮助 (/gall /gallery /画廊)：\n"
         "/gall {add-gallery | 创建画廊} <画廊名称> - 创建一个新的画廊，提供多个名称则作为别名\n"
-        "/gall {modify-gallery | 修改画廊} <画 廊名称> [+别名] [-别名] - 修改画廊名称，使用 + 添加别名，- 删除别名\n"
+        "/gall {modify-gallery | 修改画廊} <画廊名称> [+别名] [-别名] - 修改画廊名称，使用 + 添加别名，- 删除别名\n"
         "/gall {list-galleries | 列出画廊} - 列出所有画廊\n"
         # "/gall {remove-gallery | 删除画廊} <画廊名称> - 删除指定名称的画廊\n"
         # "/gall {clear | 清空画廊} <画廊名称> - 清空指定画廊中的所有图片\n"
-        "/gall {add | upload | 添加 | 上传} [force | 强制] [skip | 跳过] [replace | 替换] [gallery] <图片链接或回复图片> - 添加图片到画廊，使用 force 参数可强制添加重复图片\n"
+        "/gall {add | upload | 添加 | 上传} <画廊名称> [force | 强制] [skip | 跳过] [replace | 替换]  <图片链接或回复图片> - 添加图片到画廊，使用 force 参数可强制添加重复图片\n"
         "/gall {modify | 修改} <图片ID> [+#标签 | -#标签 | --tag +标签1 | --tags +标签1,-标签2] [-- 备注] - 修改图片的标签和备注\n"
         "/gall {move | 移动} <目标画廊名称> <图片ID1> <图片ID2> ... - 将指定ID的图片移动到目标画廊\n"
         "/gall {remove | 删除} <图片ID> - 从画廊中删除指定ID的图片\n"
@@ -192,15 +193,25 @@ async def add_image(event: MessageEvent, params: str, matcher: Matcher):
         params = params.replace("＃", "#")
         warnings.add("检测到全角井号＃，已自动替换为半角#")
     args = ArgParser(params)
-    is_force = args.check_and_pop("force") or args.check_and_pop("强制")
-    is_skip = args.check_and_pop("skip") or args.check_and_pop("跳过")
-    is_replace = args.check_and_pop("replace") or args.check_and_pop("替换")
     gallery_name = args.pop()
     if gallery_name is None:
         return await reply_help(event, matcher)
-    is_force = is_force or args.check_and_pop("force") or args.check_and_pop("强制")
-    is_skip = is_skip or args.check_and_pop("skip") or args.check_and_pop("跳过")
-    is_replace = is_replace or args.check_and_pop("replace") or args.check_and_pop("替换")
+    class Mode(Enum):
+        NORMAL = 0
+        FORCE = 1
+        SKIP = 2
+        REPLACE = 3
+    mode = Mode.NORMAL
+    match args.peek():
+        case "force" | "强制":
+            mode = Mode.FORCE
+            args.pop()
+        case "skip" | "跳过":
+            mode = Mode.SKIP
+            args.pop()
+        case "replace" | "替换":
+            mode = Mode.REPLACE
+            args.pop()
     filters = gallery_manager.get_filters(gallery_name)
     gallery: Gallery = gallery_manager.find_gallery(filters.gallery)
 
@@ -281,6 +292,7 @@ async def add_image(event: MessageEvent, params: str, matcher: Matcher):
     message_builder.texts([f"警告：{warning}。" for warning in warnings])
     if len(unknown_args) > 0:
         message_builder.text(f"未知参数：{' '.join(unknown_args)}。")
+        message_builder.text("tips：备注包含空格或关键字请使用如\" -- comment\"")
         return await message_builder.send(matcher)
 
     images = await get_images_from_context(event)
@@ -293,11 +305,11 @@ async def add_image(event: MessageEvent, params: str, matcher: Matcher):
     replaced_images: list[Tuple[CachedFile, ImageMeta]] = []
     replaced_indexes: list[int] = []
     replaced_images2: list[Tuple[ImageMeta, ImageMeta]] = []
-    if not is_force:
+    if mode != Mode.FORCE:
         for i, image in enumerate(image_files):
             sames = gallery.find_same_image(image.local_path)
             if sames and len(sames) > 0:
-                if is_replace:
+                if mode == Mode.REPLACE:
                     replaced_images.append((image, sames[0]))
                     replaced_indexes.append(i)
                 else:
@@ -321,7 +333,7 @@ async def add_image(event: MessageEvent, params: str, matcher: Matcher):
         message_builder.text(f"添加的图片附加标签：{', '.join(filters.tags)}。")
     if filters.comment != "":
         message_builder.text(f"添加的图片附加备注：{filters.comment}。")
-    if not is_skip and (len(existing_images) > 0 or len(replaced_images) > 0):
+    if mode != Mode.SKIP and (len(existing_images) > 0 or len(replaced_images) > 0):
         if len(existing_images) > 0:
             message_builder.text(f"{len(existing_images)} 张图片已存在于画廊 {filters.gallery}：")
         if len(replaced_images) > 0:
@@ -518,6 +530,7 @@ async def random_image(event: MessageEvent, params: str, matcher: Matcher):
         builder.text(f"警告：{warning}。")
     if len(unknown_args) > 0:
         builder.text(f"未知参数：{' '.join(unknown_args)}。")
+        builder.text("tips：本命令可选位置参数为图片数量，按备注筛选请使用如\" -- comment\"")
     if with_details:
         if len(images) > 1:
             builder.text("多张图片不支持查看详情。")
@@ -675,6 +688,7 @@ async def modify_image(event: MessageEvent, params: str, matcher: Matcher):
         message_builder.text(f"警告：{warning}。")
     if len(unknown_args) > 0:
         message_builder.text(f"未知参数：{' '.join(unknown_args)}。")
+        message_builder.text("tips：本命令无位置参数，备注请使用如\" -- comment\"，标签请使用 +#tag 或 -#tag")
         return await message_builder.send(matcher)
 
     if comment == "":

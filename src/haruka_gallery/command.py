@@ -196,11 +196,13 @@ async def add_image(event: MessageEvent, params: str, matcher: Matcher):
     gallery_name = args.pop()
     if gallery_name is None:
         return await reply_help(event, matcher)
+
     class Mode(Enum):
         NORMAL = 0
         FORCE = 1
         SKIP = 2
         REPLACE = 3
+
     mode = Mode.NORMAL
     match args.peek():
         case "force" | "强制":
@@ -604,14 +606,18 @@ async def modify_image(event: MessageEvent, params: str, matcher: Matcher):
     args = ArgParser(params)
     image_id_str = args.peek()
     images = []
-    if image_id_str and image_id_str.isdigit():
-        image_id = int(args.pop())
-        image = gallery_manager.get_image_by_id(image_id)
-        images.append(image)
+    if image_id_str:
+        image_ids = parse_single_image_str(image_id_str)
+        image_ids = [s.strip() for s in image_ids if s.strip().isdigit()]
+        if image_ids:
+            args.pop()
+        for image_id_s in image_ids:
+            image_id = int(image_id_s)
+            image = gallery_manager.get_image_by_id(image_id)
+            images.append(image)
     else:
         image_id_str = None
     images.extend(await find_gallery_images_by_event(event))
-    print(images)
     images: List[ImageMeta] = [i for i in images if i is not None]
     if not images:
         if image_id_str:
@@ -956,26 +962,32 @@ async def find_gallery_image_by_arg_or_event(arg_parser: ArgParser, event: Messa
     return image
 
 
+def parse_single_image_str(image_id_str: str) -> list[str]:
+    image_ids = []
+    if not image_id_str.strip():
+        return image_ids
+    if '-' in image_id_str:
+        parts = image_id_str.split('-')
+        if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+            start_id = int(parts[0])
+            end_id = int(parts[1])
+            if start_id > end_id:
+                start_id, end_id = end_id, start_id
+            image_ids.extend([str(i) for i in range(start_id, end_id + 1)])
+        else:
+            image_ids.append(image_id_str)
+    else:
+        image_ids.append(image_id_str)
+    return image_ids
+
+
 async def find_gallery_images_by_arg_or_event(arg_parser: ArgParser, event: MessageEvent) -> list[
     tuple[str, ImageMeta]]:
     image_ids = arg_parser.pop_all().split(" ")
     image_ids_copy: list[str] = image_ids
     image_ids = []
     for image_id_str in image_ids_copy:
-        if not image_id_str.strip():
-            continue
-        if '-' in image_id_str:
-            parts = image_id_str.split('-')
-            if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
-                start_id = int(parts[0])
-                end_id = int(parts[1])
-                if start_id > end_id:
-                    start_id, end_id = end_id, start_id
-                image_ids.extend([str(i) for i in range(start_id, end_id + 1)])
-            else:
-                image_ids.append(image_id_str)
-        else:
-            image_ids.append(image_id_str)
+        image_ids.append(parse_single_image_str(image_id_str))
 
     images = [(image_id, gallery_manager.get_image_by_id(image_id)) for image_id in image_ids]
     images.extend([("", image) for image in await find_gallery_images_by_event(event)])

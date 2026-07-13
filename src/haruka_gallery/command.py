@@ -987,7 +987,7 @@ async def find_gallery_images_by_arg_or_event(arg_parser: ArgParser, event: Mess
     image_ids_copy: list[str] = image_ids
     image_ids = []
     for image_id_str in image_ids_copy:
-        image_ids.append(parse_single_image_str(image_id_str))
+        image_ids.extend(parse_single_image_str(image_id_str))
 
     images = [(image_id, gallery_manager.get_image_by_id(image_id)) for image_id in image_ids]
     images.extend([("", image) for image in await find_gallery_images_by_event(event)])

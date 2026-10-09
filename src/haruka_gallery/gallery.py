@@ -79,7 +79,7 @@ class GalleryManager:
         rows = cursor.fetchall()
         filters = {}
         for row in rows:
-            filters[row[0]]=(GalleryFilter(gallery=row[1], tags=json.loads(row[2]), comment=row[3]))
+            filters[row[0]] = (GalleryFilter(gallery=row[1], tags=json.loads(row[2]), comment=row[3]))
         return filters
 
     @staticmethod
@@ -547,6 +547,12 @@ class GalleryFilter:
         self.gallery = gallery
         self.tags = tags
         self.comment = comment
+
+    def __str__(self):
+        s = self.gallery
+        for tag in self.tags:
+            s += f"#{tag}"
+        return s
 
 
 gallery_manager = GalleryManager()

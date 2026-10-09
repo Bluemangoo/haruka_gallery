@@ -86,7 +86,7 @@ class MessageBuilder:
     async def send(self, matcher: Matcher, bot: Optional[Bot] = None):
         if not self.message and not self._reply_id:
             logger.warning("MessageBuilder: 消息为空，取消发送。")
-            return
+            return None
 
         final_message = self.message.copy()
         healing_map = self._healing_map.copy()
@@ -109,6 +109,7 @@ class MessageBuilder:
             send_receipt = await matcher.send(final_message)
             if self.have_non_file_id_image:
                 await self.update_file_id(send_receipt, bot or get_bot(), final_message, healing_map)
+            return send_receipt
         except Exception as e:
             if '1200' in str(e):
                 logger.warning(f"发送失败 (retcode={1200})，缓存失效。启动自愈...")
@@ -161,19 +162,20 @@ class MessageBuilder:
 
         if not needs_healing:
             logger.error("捕获 1200，但没有可自愈的图片 (没有 ImageMeta 映射)。")
-            return
+            return None
 
         try:
             logger.debug("尝试使用'治愈'后的消息发送...")
             send_receipt = await matcher.send(healed_message, reply=False)
             if not send_receipt or 'message_id' not in send_receipt:
                 logger.warning("自愈后发送成功，但未收到 message_id 回执，无法更新 file_id。")
-                return
+                return send_receipt
         except Exception as e2:
             logger.error(f"自愈后发送依然失败: {e2}")
-            return
+            return None
 
         await self.update_file_id(send_receipt, bot, healed_message, healing_map)
+        return send_receipt
 
     async def update_file_id(self, send_receipt, bot: Bot, message: Message, healing_map: list[Optional[ImageMeta]]):
         try:

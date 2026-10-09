@@ -7,7 +7,8 @@ arg_offset = 1 if sys.argv[0].endswith('python.exe') or sys.argv[0].endswith('py
     'python') else 0
 
 gallery_name = sys.argv[arg_offset + 2]
-gallery = gallery_manager.find_gallery(gallery_name)
+filters = gallery_manager.get_filters(gallery_name)
+gallery = gallery_manager.find_gallery(filters.gallery)
 if gallery is None:
     raise ValueError(f'Gallery {gallery_name} not found.')
 path = Path(sys.argv[arg_offset + 3])
@@ -21,8 +22,9 @@ for ext in ['*.gif', '*.jpg', '*.jpeg', '*.png', '*.bmp', '*.webp']:
         if not is_force and gallery.find_same_image(p):
             print("跳过相似的图片:", p)
             continue
-        comment = p.stem if with_comment else ""
-        gallery.add_image_unchecked(p, comment, [], "console")
+        comment = p.stem if with_comment else filters.comment
+        comment = comment if comment is not None else ""
+        gallery.add_image_unchecked(p, comment, filters.tags, "console")
         if with_comment:
             print("已添加图片及评论:", p.name)
         else:

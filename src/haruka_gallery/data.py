@@ -8,6 +8,10 @@ if not gallery_config.data_dir.exists():
 db = sqlite3.connect(gallery_config.data_dir / "images.db")
 DB_VERSION = 4
 
+db.execute("PRAGMA journal_mode=WAL;")
+db.execute("PRAGMA busy_timeout=5000;")
+db.execute("PRAGMA synchronous = NORMAL;")
+
 try:
     cursor = db.execute("SELECT version FROM meta LIMIT 1")
     row = cursor.fetchone()
@@ -34,9 +38,11 @@ while current_version < DB_VERSION:
     if migration_file is not None:
         with open(str(Path(__file__).resolve().parent / "sql" / migration_file), "r", encoding="utf-8") as f:
             migration_sql = f.read()
-            db.executescript(migration_sql)
-            db.commit()
+            with db:
+                db.executescript(migration_sql)
             row = db.execute("SELECT version FROM meta LIMIT 1").fetchone()
             current_version = row[0]
             continue
     raise RuntimeError(f"Unrecognized database version: {current_version}")
+
+db.autocommit = True

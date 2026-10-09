@@ -1,7 +1,6 @@
 from pathlib import Path
 
-import nonebot
-from nonebot import get_plugin_config, get_driver, get_bot
+from nonebot import get_plugin_config, get_driver
 from pydantic import BaseModel
 
 _cache_dir: Path = Path("cache/haruka_gallery")

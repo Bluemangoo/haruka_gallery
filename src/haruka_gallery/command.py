@@ -1,17 +1,21 @@
 import io
 import re
 from enum import Enum
+from zipfile import ZipFile
 
-from nonebot import on_command, on_message
-from nonebot.adapters.onebot.v11 import MessageEvent
+from nonebot import on_command, on_message, Bot
+from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent
 from nonebot.internal.matcher import Matcher
 from nonebot.params import CommandArg
+from nonebot.permission import SUPERUSER
 from nonebot.rule import startswith
 
 from .gallery import gallery_manager, Gallery, ImageMeta, get_random_image, get_all_image, GalleryFilter
 from .message_builder import MessageBuilder, ForwardMessageBuilder
 from .plot import *
-from .utils import get_images_from_context, download_images, CachedFile, ArgParser
+from .utils import get_images_from_context, download_images, CachedFile, file_cache
+from .arg_parser import ArgParser, FullArgParser, ArgValueString, ArgValueStringWithRule, ArgValueList, ArgValueAmount, \
+    ArgValueEnum, ArgValueInt
 
 gall_command = on_command("gallery", aliases={"画廊", "gall"}, force_whitespace=True, priority=5)
 kan_command = on_command("看", priority=8)
@@ -20,25 +24,29 @@ upload_command = on_command("upload", force_whitespace=True, priority=5)
 
 
 @gall_command.handle()
-async def _(event: MessageEvent, matcher: Matcher, args=CommandArg()):
+async def _(event: MessageEvent, matcher: Matcher, bot: Bot, args=CommandArg()):
     try:
         text: str = args.extract_plain_text().strip()
         subcommand, *params = text.split(" ", 1)
         params = params[0] if params else ""
         if subcommand == "add" or subcommand == "upload" or subcommand == "添加" or subcommand == "上传":
-            return await add_image(event, params, matcher)
+            return await add_image(event, params, matcher, bot)
         if subcommand == "remove" or subcommand == "删除":
-            return await remove_image(event, params, matcher)
+            return await remove_image(event, params, matcher, bot)
         if subcommand == "modify" or subcommand == "修改":
-            return await modify_image(event, params, matcher)
+            return await modify_image(event, params, matcher, bot)
         if subcommand == "move" or subcommand == "移动":
-            return await move_image(event, params, matcher)
+            return await move_image(event, params, matcher, bot)
         if subcommand == "show" or subcommand == "查看" or subcommand == "看":
             return await random_image(event, params, matcher)
         if subcommand == "show-all" or subcommand == "查看全部" or subcommand == "看全部" or subcommand == "查看所有" or subcommand == "看所有":
-            return await show_all(event, params, matcher)
+            return await random_image(event, "全部" + params, matcher)
+        if subcommand == "count":
+            return await count_images(event, params, matcher)
+        if subcommand == "download" or subcommand == "下载":
+            return await download_image(event, params, matcher, bot)
         if subcommand == "details" or subcommand == "详情":
-            return await show_details(event, params, matcher)
+            return await show_details(event, params, matcher, bot)
         if subcommand == "add-gallery" or subcommand == "创建画廊":
             return await add_gallery(event, params, matcher)
         if subcommand == "modify-gallery" or subcommand == "修改画廊":
@@ -66,7 +74,6 @@ async def _(event: MessageEvent, matcher: Matcher, args=CommandArg()):
     try:
         text: str = args.extract_plain_text().strip()
         await random_image(event, text, matcher)
-        print(matcher)
     except Exception as e:
         await MessageBuilder().text(f"命令执行出错：{str(e)}").reply_to(event).send(matcher)
         raise e
@@ -74,10 +81,10 @@ async def _(event: MessageEvent, matcher: Matcher, args=CommandArg()):
 
 @shangchuan_command.handle()
 @upload_command.handle()
-async def _(event: MessageEvent, matcher: Matcher, args=CommandArg()):
+async def _(event: MessageEvent, matcher: Matcher, bot: Bot, args=CommandArg()):
     try:
         text: str = args.extract_plain_text().strip()
-        await add_image(event, text, matcher)
+        await add_image(event, text, matcher, bot)
     except Exception as e:
         await MessageBuilder().text(f"命令执行出错：{str(e)}").reply_to(event).send(matcher)
         raise e
@@ -91,17 +98,21 @@ async def reply_help(_event: MessageEvent, matcher: Matcher):
         "/gall {list-galleries | 列出画廊} - 列出所有画廊\n"
         # "/gall {remove-gallery | 删除画廊} <画廊名称> - 删除指定名称的画廊\n"
         # "/gall {clear | 清空画廊} <画廊名称> - 清空指定画廊中的所有图片\n"
+        "/gall count <画廊名称> [筛选条件] - 统计画廊中符合条件的图片数量\n"
         "/gall {add | upload | 添加 | 上传} <画廊名称> [force | 强制] [skip | 跳过] [replace | 替换]  <图片链接或回复图片> - 添加图片到画廊，使用 force 参数可强制添加重复图片\n"
         "/gall {modify | 修改} <图片ID> [+#标签 | -#标签 | --tag +标签1 | --tags +标签1,-标签2] [-- 备注] - 修改图片的标签和备注\n"
         "/gall {move | 移动} <目标画廊名称> <图片ID1> <图片ID2> ... - 将指定ID的图片移动到目标画廊\n"
         "/gall {remove | 删除} <图片ID> - 从画廊中删除指定ID的图片\n"
-        "/gall {show | 查看 | 看} {<画廊名称> | *} [筛选条件] [数量] - 随机查看画廊中的图片，*则从所有画廊，筛选条件可使用 [#标签 | --tag 标签 | --tags 标签1,标签2] [-- 备注]，数量可使用 xN 或 N 表示 (需要在备注前面)\n"
+        "/gall {show | 查看 | 看} {<画廊名称> | *} [筛选条件] [排序条件] [数量] - 随机查看画廊中的图片，数量可使用 xN 或 N 表示 (需要在备注前面)\n"
         "/gall {show | 查看 | 看} <图片ID1> <图片ID2> ... - 查看指定ID的图片\n"
         "/gall {show-all | 查看全部 | 看全部} {<画廊名称> | *} [筛选条件] - 查看画廊中的所有图片缩略图\n"
         "/gall {details | 详情} <图片ID> - 查看指定ID图片的详细信息\n"
         "/gall {set-alias | 设置别名} <别名> {<画廊名称> | *} [筛选条件] - 给画廊及筛选条件添加别名，筛选条件同查看命令\n"
         "/gall {list-aliases | 列出别名} - 列出所有别名\n"
         "/gall {remove-alias | 删除别名} <别名> - 删除画廊的别名\n"
+        "\n"
+        "筛选条件 - 画廊名称用 * 匹配所有画廊，筛选条件可使用 [#标签 | --tag 标签 | --tags 标签1,标签2] [-- 备注]\n"
+        "排序条件 - 用 --offset n 指定偏移(跳过)量，按照 id 排序，为负值则反向取; --startswith id 从指定 id 开始取"
         "\n"
         "alias：\n"
         "/看 - /gall show\n"
@@ -187,15 +198,12 @@ async def list_galleries(event: MessageEvent, _param: str, matcher: Matcher):
     return await ForwardMessageBuilder().node(message_builder).send(matcher)
 
 
-async def add_image(event: MessageEvent, params: str, matcher: Matcher):
+async def add_image(event: MessageEvent, params: str, matcher: Matcher, bot: Bot):
     warnings = set()
     if "＃" in params:
         params = params.replace("＃", "#")
         warnings.add("检测到全角井号＃，已自动替换为半角#")
     args = ArgParser(params)
-    gallery_name = args.pop()
-    if gallery_name is None:
-        return await reply_help(event, matcher)
 
     class Mode(Enum):
         NORMAL = 0
@@ -203,80 +211,35 @@ async def add_image(event: MessageEvent, params: str, matcher: Matcher):
         SKIP = 2
         REPLACE = 3
 
-    mode = Mode.NORMAL
-    match args.peek():
-        case "force" | "强制":
-            mode = Mode.FORCE
-            args.pop()
-        case "skip" | "跳过":
-            mode = Mode.SKIP
-            args.pop()
-        case "replace" | "替换":
-            mode = Mode.REPLACE
-            args.pop()
+    parser = FullArgParser()
+    parser.add_optional_arg("mode", ArgValueEnum(
+        {
+            "force": Mode.FORCE, "强制": Mode.FORCE,
+            "skip": Mode.SKIP, "跳过": Mode.SKIP,
+            "replace": Mode.REPLACE, "替换": Mode.REPLACE
+        }))
+    parser.add_positional_arg("gallery", ArgValueStringWithRule(check_name))
+    parser.add_named_arg("tag", ArgValueStringWithRule(check_name), multiple_value=True)
+    parser.add_named_arg("tag", ArgValueStringWithRule(check_name), aliases_start_with=["#"], multiple_value=True)
+    parser.add_named_arg("tags", ArgValueList(ArgValueStringWithRule(check_name)), multiple_value=True)
+    parser.set_final_string_arg("comment", ArgValueString())
+    parser.add_optional_arg("comment", ArgValueString())
+
+    result = parser.parse(args)
+    mode = result.get("mode") or Mode.NORMAL
+    gallery_name = result.get("gallery")
+    if gallery_name is None:
+        return await reply_help(event, matcher)
     filters = gallery_manager.get_filters(gallery_name)
     gallery: Gallery = gallery_manager.find_gallery(filters.gallery)
 
     if not gallery:
         return await MessageBuilder().text(f"没有找到画廊 {gallery_name}").reply_to(event).send(matcher)
 
-    unknown_args = []
-    comment = ""
-    while current := args.peek():
-        if current == "--tag":
-            args.pop()
-            tag = args.pop()
-            check_result = check_tag(tag)
-            if check_result[0]:
-                filters.tags.append(tag)
-                continue
-            else:
-                unknown_args.append(current)
-                unknown_args.append(tag)
-                warnings.add(check_result[1])
-        elif current == "--tags":
-            args.pop()
-            tag_str = args.pop()
-            if tag_str:
-                tags = re.split(r"[，,;]+", tag_str)
-                for tag in tags:
-                    check_result = check_tag(tag)
-                    if not check_result[0]:
-                        unknown_args.append(current)
-                        unknown_args.append(tag)
-                        warnings.add(check_result[1])
-                        continue
-                filters.tags.extend(tags)
-                continue
-            else:
-                unknown_args.append(current)
-                unknown_args.append(tag_str)
-                warnings.add("标签不能为空")
-        elif current == "--":
-            args.pop()
-            comment = args.pop_all()
-            if comment.startswith("-"):
-                warnings.add("备注不能以 - 开头")
-                unknown_args.append(current)
-                unknown_args.append(comment)
-                comment = ""
-            break
-        elif current.startswith("#"):
-            tag = args.pop()[1:]
-            check_result = check_tag(tag)
-            if check_result[0]:
-                filters.tags.append(tag)
-            else:
-                unknown_args.append(current)
-                warnings.add(check_result[1])
-        else:
-            if current.startswith("-"):
-                unknown_args.append(current)
-                warnings.add("备注不能以 - 开头")
-                continue
-            if comment != "":
-                unknown_args.append(comment)
-            comment = args.pop()
+    unknown_args = result.unknown_args
+    comment = result.get("comment") or ""
+    filters.tags.extend(result.get("tag") or [])
+    filters.tags.extend(result.get("tags") or [])
 
     filters.tags = list(dict.fromkeys(filters.tags))
     if comment != "":
@@ -297,10 +260,10 @@ async def add_image(event: MessageEvent, params: str, matcher: Matcher):
         message_builder.text("tips：备注包含空格或关键字请使用如\" -- comment\"")
         return await message_builder.send(matcher)
 
-    images = await get_images_from_context(event)
+    images = await get_images_from_context(event, bot)
     if len(images) == 0:
         return await MessageBuilder().text(f"没有找到图片").reply_to(event).send(matcher)
-    image_files = await download_images(images)
+    image_files = await download_images(images, bot)
     all_image_files = [img for img in image_files]
 
     existing_images: list[Tuple[CachedFile, list[ImageMeta]]] = []
@@ -390,9 +353,42 @@ async def add_image(event: MessageEvent, params: str, matcher: Matcher):
     return None
 
 
-async def remove_image(event: MessageEvent, params: str, matcher: Matcher):
+async def count_images(event: MessageEvent, params: str, matcher: Matcher):
     args = ArgParser(params)
-    images = await find_gallery_images_by_arg_or_event(args, event)
+    gallery_name = args.pop()
+    if gallery_name is None:
+        return await reply_help(event, matcher)
+    filters = gallery_manager.get_filters(gallery_name)
+
+    arg_parser = FullArgParser()
+    arg_parser.add_named_arg("tag", ArgValueStringWithRule(check_name), aliases_start_with=["#"], multiple_value=True)
+    arg_parser.add_named_arg("tag", ArgValueList(ArgValueStringWithRule(check_name)), multiple_value=True)
+    arg_parser.set_final_string_arg("comment", ArgValueString())
+    arg_parser.add_optional_arg("comment", ArgValueString())
+
+    parse_result = arg_parser.parse(args)
+    comment = parse_result.get("comment") or ""
+    filters.tags.extend(parse_result.get("tag") or [])
+
+    comment = comment.strip() if comment else None
+    if comment:
+        filters.comment = comment
+    gallery: Gallery | None = None
+    if filters.gallery != "*":
+        gallery: Gallery = gallery_manager.find_gallery(filters.gallery)
+
+        if not gallery:
+            return await MessageBuilder().text(f"没有找到画廊 {filters.gallery}").reply_to(event).send(matcher)
+
+    images = get_all_image(gallery, tags=filters.tags, comment=filters.comment)
+    message_builder = MessageBuilder().reply_to(event)
+    message_builder.text(f"画廊 {filters.gallery} 中符合条件的图片数量为：{len(images)}")
+    return await message_builder.send(matcher)
+
+
+async def remove_image(event: MessageEvent, params: str, matcher: Matcher, bot: Bot):
+    args = ArgParser(params)
+    images = await find_gallery_images_by_arg_or_event(args, event, bot)
     message_builder = MessageBuilder().reply_to(event)
     if len(images) == 0:
         return await message_builder.text(f"没有找到图片").send(matcher)
@@ -407,14 +403,14 @@ async def remove_image(event: MessageEvent, params: str, matcher: Matcher):
     return await message_builder.send(matcher)
 
 
-async def move_image(event: MessageEvent, params: str, matcher: Matcher):
+async def move_image(event: MessageEvent, params: str, matcher: Matcher, bot: Bot):
     args = ArgParser(params)
     message_builder = MessageBuilder().reply_to(event)
     target_gallery_name = args.pop()
     gallery = gallery_manager.find_gallery(target_gallery_name)
     if not gallery:
         return await message_builder.text(f"没有找到画廊 {target_gallery_name}").send(matcher)
-    images = await find_gallery_images_by_arg_or_event(args, event)
+    images = await find_gallery_images_by_arg_or_event(args, event, bot)
     if len(images) == 0:
         return await message_builder.text(f"没有找到图片").send(matcher)
     for image_id, image in images:
@@ -424,6 +420,87 @@ async def move_image(event: MessageEvent, params: str, matcher: Matcher):
         else:
             message_builder.text(f"没有找到图片 {image_id}。")
     return await message_builder.send(matcher)
+
+
+async def download_image(event: MessageEvent, params: str, matcher: Matcher, bot: Bot):
+    if not isinstance(event, GroupMessageEvent):
+        return None
+    if not await SUPERUSER(bot, event):
+        return None
+
+    warnings = set()
+    if "＃" in params:
+        params = params.replace("＃", "#")
+        warnings.add("检测到全角井号＃，已自动替换为半角#")
+    args = ArgParser(params)
+    gallery_name = args.pop()
+    if gallery_name is None:
+        return await reply_help(event, matcher)
+    filters = gallery_manager.get_filters(gallery_name)
+
+    arg_parser = FullArgParser()
+    arg_parser.add_named_arg("tag", ArgValueStringWithRule(check_name), aliases_start_with=["#"], multiple_value=True)
+    arg_parser.add_named_arg("tag", ArgValueList(ArgValueStringWithRule(check_name)), multiple_value=True)
+    arg_parser.set_final_string_arg("comment", ArgValueString())
+    arg_parser.add_optional_arg("count", ArgValueAmount())
+    arg_parser.add_optional_arg("comment", ArgValueString())
+
+    parse_result = arg_parser.parse(args)
+    if parse_result.errors:
+        builder = MessageBuilder().reply_to(event)
+        for warning in warnings:
+            builder.text(f"警告：{warning}。")
+        if len(parse_result.unknown_args) > 0:
+            builder.text(f"未知参数：{' '.join(parse_result.unknown_args)}。")
+            builder.text("tips：本命令可选位置参数为图片数量，按备注筛选请使用如\" -- comment\"")
+        for error in parse_result.errors:
+            builder.text(f"参数解析错误：{error}。")
+        return await builder.send(matcher)
+
+    comment = parse_result.get("comment") or ""
+    filters.tags.extend(parse_result.get("tag") or [])
+
+    comment = comment.strip() if comment else None
+    if comment:
+        filters.comment = comment
+    gallery: Gallery | None = None
+    if filters.gallery != "*":
+        gallery: Gallery = gallery_manager.find_gallery(filters.gallery)
+
+        if not gallery:
+            return await MessageBuilder().text(f"没有找到画廊 {filters.gallery}").reply_to(event).send(matcher)
+
+    if filters.gallery == "*" and len(filters.tags) == 0 and filters.comment is None:
+        return await MessageBuilder().text("参数不足，查看全部需要指定至少一个筛选条件").reply_to(event).send(matcher)
+
+    images = get_all_image(gallery, tags=filters.tags, comment=filters.comment)
+    if len(images) == 0:
+        return await MessageBuilder().text("没有找到符合条件的图片").reply_to(event).send(matcher)
+    message_builder = MessageBuilder().reply_to(event)
+    for warning in warnings:
+        message_builder.text(f"警告：{warning}。")
+    message_builder.text(f"找到 {len(images)} 张符合条件的图片，正在打包...")
+    receipt = await message_builder.send(matcher)
+    if not receipt:
+        raise RuntimeError("发送消息失败，无法继续打包图片")
+    msg_id = receipt["message_id"]
+    await bot.call_api("set_msg_emoji_like", message_id=msg_id, emoji_id="128064", set=True)
+
+    zip_file = file_cache.new_file(".zip")
+    with ZipFile(zip_file.local_path, "w") as zipf:
+        for image in images:
+            path = image.get_image_path()
+            zipf.write(path, arcname=os.path.basename(path))
+    await bot.call_api("set_msg_emoji_like", message_id=msg_id, emoji_id="128064", set=False)
+    await bot.call_api("set_msg_emoji_like", message_id=msg_id, emoji_id="128235", set=True)
+    await bot.call_api('upload_group_file', **{
+        'group_id': int(event.group_id),
+        'file': f'file://{os.path.abspath(zip_file.local_path)}',
+        'name': str(filters) + ".zip",
+        'folder': "/",
+    })
+    await bot.call_api("set_msg_emoji_like", message_id=msg_id, emoji_id="128235", set=False)
+    return None
 
 
 async def random_image(event: MessageEvent, params: str, matcher: Matcher):
@@ -440,66 +517,36 @@ async def random_image(event: MessageEvent, params: str, matcher: Matcher):
     if gallery_name is None:
         return await reply_help(event, matcher)
 
-    if not need_all and gallery_name.isdigit():
+    if not need_all and gallery_name.replace("-", "").isdigit():
         return await show_image(event, params, matcher)
     unknown_args = []
 
     filters = gallery_manager.get_filters(gallery_name)
 
-    count = 1
-    count_str = ""
-    comment = None
-    with_details = False
-    is_raw = False
-    while current := args.peek():
-        if current == "--tag":
-            args.pop()
-            tag = args.pop()
-            if tag and not tag.startswith("-"):
-                filters.tags.append(tag)
-                continue
-            else:
-                unknown_args.append(current)
-                unknown_args.append(tag)
-        elif current == "--tags":
-            args.pop()
-            tag_str = args.pop()
-            if tag_str and not tag_str.startswith("-"):
-                filters.tags.extend(re.split(r"[，,;]+", tag_str))
-                continue
-            else:
-                unknown_args.append(current)
-                unknown_args.append(tag_str)
-        elif current == "--details":
-            args.pop()
-            with_details = True
-        elif current == "--raw":
-            args.pop()
-            is_raw = True
-        elif current == "--":
-            args.pop()
-            comment = args.pop_all()
-            break
-        elif current.startswith("#"):
-            tag = args.pop()[1:]
-            if tag.strip() != "":
-                filters.tags.append(tag)
-                continue
-        elif not need_all:
-            if count_str != "":
-                unknown_args.append(count_str)
-            count_str = args.pop()
-            s = count_str
+    arg_parser = FullArgParser()
+    arg_parser.add_named_arg("tag", ArgValueStringWithRule(check_name), aliases_start_with=["#"], multiple_value=True)
+    arg_parser.add_named_arg("tag", ArgValueList(ArgValueStringWithRule(check_name)), multiple_value=True)
+    arg_parser.add_named_flag("details")
+    arg_parser.add_named_flag("raw")
+    arg_parser.set_final_string_arg("comment", ArgValueString())
+    arg_parser.add_optional_arg("count", ArgValueAmount())
+    arg_parser.add_named_arg("offset", ArgValueInt())
+    arg_parser.add_named_arg("startswith", ArgValueInt())
+    arg_parser.add_optional_arg("comment", ArgValueString())
+    arg_parser.add_named_flag("each")
 
-            if s.startswith("x"):
-                s = s[1:]
-            if not s.isdigit():
-                unknown_args.append(count_str)
-                count_str = ""
-                continue
-            count = int(s)
-        else:
-            unknown_args.append(args.pop())
+    parse_result = arg_parser.parse(args)
+    count = parse_result.get("count") or 1
+    comment = parse_result.get("comment") or ""
+    offset: int | None = parse_result.get("offset")
+    offset_startswith: int | None = parse_result.get("startswith")
+    if offset is None and offset_startswith is not None:
+        offset = 0
+    with_details = parse_result.get("details") or False
+    is_raw = parse_result.get("raw") or False
+    require_each = parse_result.get("each") or False
+    filters.tags.extend(parse_result.get("tag") or [])
+    warnings.update(parse_result.errors)  # 只有这个功能可以这么做
 
     comment = comment.strip() if comment else None
     if comment:
@@ -515,17 +562,34 @@ async def random_image(event: MessageEvent, params: str, matcher: Matcher):
         return await MessageBuilder().text("参数不足，查看全部需要指定至少一个筛选条件").reply_to(event).send(matcher)
 
     # 看全部则 count 一定是 1 不会出问题
-    if count > gallery_config.random_image_limit:
-        return await MessageBuilder().text(f"单次查看图片数量不能超过 {gallery_config.random_image_limit} 张").reply_to(
-            event).send(matcher)
+    len_limit = 100 if require_each else gallery_config.random_image_limit
+    if count > len_limit:
+        return await MessageBuilder().text(f"单次查看图片数量不能超过 {len_limit} 张").reply_to(event).send(matcher)
 
     if need_all:
         images = get_all_image(gallery, tags=filters.tags, comment=filters.comment)
         return await show_all(event, images, matcher)
 
-    images = get_random_image(gallery, tags=filters.tags, comment=filters.comment, count=count)
+    if offset is not None:
+        all_images = get_all_image(gallery, tags=filters.tags, comment=filters.comment)
+        if offset_startswith is not None:
+            if offset >= 0:
+                idx = next((i for i, img in enumerate(all_images) if img.id >= offset_startswith), len(all_images))
+                target_pool = all_images[idx:]
+            else:
+                idx = next((i for i in range(len(all_images) - 1, -1, -1) if all_images[i].id <= offset_startswith), -1)
+                target_pool = all_images[:idx + 1]
+        else:
+            target_pool = all_images
+        if abs(offset) > len(target_pool):
+            return await MessageBuilder().text(f"偏移量越界！当前范围只有 {len(target_pool)} 张").reply_to(event).send(
+                matcher)
+        images = target_pool[offset: offset + count] if offset >= 0 else target_pool[offset - count: offset]
+    else:
+        images = get_random_image(gallery, tags=filters.tags, comment=filters.comment, count=count)
     if len(images) == 0:
-        return await MessageBuilder().text(f"画廊 {filters.gallery} 中没有图片").reply_to(event).send(matcher)
+        return await MessageBuilder().text(f"画廊 {filters.gallery} 中找不到符合条件的图片").reply_to(event).send(
+            matcher)
 
     builder = MessageBuilder().reply_to(event)
     for warning in warnings:
@@ -539,6 +603,15 @@ async def random_image(event: MessageEvent, params: str, matcher: Matcher):
         else:
             image = images[0]
             push_details(builder, image)
+    if require_each:
+        parent = ForwardMessageBuilder()
+        if len(builder.message) > 0:
+            parent.node(builder)
+        for image in images:
+            builder = MessageBuilder()
+            builder.image(image, is_raw=is_raw)
+            parent.node(builder)
+        return await parent.send(matcher)
     for image in images:
         builder.image(image, is_raw=is_raw)
     return await builder.send(matcher)
@@ -549,6 +622,9 @@ async def show_image(event: MessageEvent, params: str, matcher: Matcher):
     require_details = "--details" in ids
     if require_details:
         ids.remove("--details")
+    require_each = "--each" in ids
+    if require_each:
+        ids.remove("--each")
     is_raw = "--raw" in ids
     if is_raw:
         ids.remove("--raw")
@@ -557,13 +633,21 @@ async def show_image(event: MessageEvent, params: str, matcher: Matcher):
     message_builder = MessageBuilder().reply_to(event)
     undefined_ids = []
     for id_str in ids:
-        if id_str.strip().isdigit():
-            image_id = int(id_str)
-            image = gallery_manager.get_image_by_id(image_id)
-            if image:
-                images.append(image)
-            else:
-                undefined_ids.append(id_str)
+        lst = parse_single_image_str(id_str)
+        if len(lst) == 0:
+            undefined_ids.append(id_str)
+        else:
+            for i in lst:
+                image = gallery_manager.get_image_by_id(int(i))
+                if image:
+                    images.append(image)
+                else:
+                    undefined_ids.append(id_str)
+
+    len_limit = 100 if require_each else gallery_config.random_image_limit
+    if len(images) > len_limit:
+        message_builder.text(f"单次查看图片数量不能超过 {len_limit} 张")
+        return await message_builder.send(matcher)
     if require_details:
         if len(images) > 1:
             message_builder.text("警告：多张图片不支持查看详情。")
@@ -572,6 +656,15 @@ async def show_image(event: MessageEvent, params: str, matcher: Matcher):
             push_details(message_builder, image)
     if len(undefined_ids) > 0:
         message_builder.text(f"未找到图片ID：{', '.join(undefined_ids)}。")
+    if require_each:
+        parent = ForwardMessageBuilder()
+        if len(message_builder.message) > 0:
+            parent.node(message_builder)
+        for image in images:
+            builder = MessageBuilder()
+            builder.image(image, is_raw=is_raw)
+            parent.node(builder)
+        return await parent.send(matcher)
     for image in images:
         message_builder.image(image, is_raw=is_raw)
     return await message_builder.send(matcher)
@@ -598,7 +691,7 @@ async def show_all(event: MessageEvent, images: list[ImageMeta], matcher: Matche
     return await message_builder.send(matcher)
 
 
-async def modify_image(event: MessageEvent, params: str, matcher: Matcher):
+async def modify_image(event: MessageEvent, params: str, matcher: Matcher, bot: Bot):
     warnings = set()
     if "＃" in params:
         params = params.replace("＃", "#")
@@ -617,7 +710,7 @@ async def modify_image(event: MessageEvent, params: str, matcher: Matcher):
             images.append(image)
     else:
         image_id_str = None
-    images.extend(await find_gallery_images_by_event(event))
+    images.extend(await find_gallery_images_by_event(event, bot))
     images: List[ImageMeta] = [i for i in images if i is not None]
     if not images:
         if image_id_str:
@@ -726,10 +819,10 @@ async def modify_image(event: MessageEvent, params: str, matcher: Matcher):
     return await message_builder.send(matcher)
 
 
-async def show_details(event: MessageEvent, params: str, matcher: Matcher):
+async def show_details(event: MessageEvent, params: str, matcher: Matcher, bot: Bot):
     arg = ArgParser(params)
     image_id_str = arg.peek()
-    image = await find_gallery_image_by_arg_or_event(arg, event)
+    image = await find_gallery_image_by_arg_or_event(arg, event, bot)
     if not image:
         if image_id_str:
             return await MessageBuilder().text(f"没有找到图片ID {image_id_str}").reply_to(event).send(matcher)
@@ -950,11 +1043,11 @@ def check_tag(tag: str) -> Tuple[bool, str | None]:
     return True, None
 
 
-async def find_gallery_image_by_arg_or_event(arg_parser: ArgParser, event: MessageEvent) -> ImageMeta | None:
+async def find_gallery_image_by_arg_or_event(arg_parser: ArgParser, event: MessageEvent, bot: Bot) -> ImageMeta | None:
     image: ImageMeta | None
     image_id_str = arg_parser.peek()
     if image_id_str is None or not image_id_str.isdigit():
-        image = await find_gallery_image_by_event(event)
+        image = await find_gallery_image_by_event(event, bot)
     else:
         arg_parser.pop()
         image_id = int(image_id_str)
@@ -981,7 +1074,7 @@ def parse_single_image_str(image_id_str: str) -> list[str]:
     return image_ids
 
 
-async def find_gallery_images_by_arg_or_event(arg_parser: ArgParser, event: MessageEvent) -> list[
+async def find_gallery_images_by_arg_or_event(arg_parser: ArgParser, event: MessageEvent, bot: Bot) -> list[
     tuple[str, ImageMeta]]:
     image_ids = arg_parser.pop_all().split(" ")
     image_ids_copy: list[str] = image_ids
@@ -990,11 +1083,11 @@ async def find_gallery_images_by_arg_or_event(arg_parser: ArgParser, event: Mess
         image_ids.extend(parse_single_image_str(image_id_str))
 
     images = [(image_id, gallery_manager.get_image_by_id(image_id)) for image_id in image_ids]
-    images.extend([("", image) for image in await find_gallery_images_by_event(event)])
+    images.extend([("", image) for image in await find_gallery_images_by_event(event, bot)])
     return images
 
 
-async def find_gallery_image(image: tuple[str, str | None]) -> ImageMeta | None:
+async def find_gallery_image(image: tuple[str, str | None], bot: Bot) -> ImageMeta | None:
     # search by file_id
     if image[1]:
         found_images = gallery_manager.get_images_by_file_id(image[1])
@@ -1002,7 +1095,7 @@ async def find_gallery_image(image: tuple[str, str | None]) -> ImageMeta | None:
             return found_images[0]
 
     # search by image content
-    image_file = (await download_images([image]))[0]
+    image_file = (await download_images([image], bot))[0]
     for gallery in gallery_manager.galleries:
         sames = gallery.find_same_image(image_file.local_path)
         if sames and len(sames) > 0:
@@ -1010,17 +1103,21 @@ async def find_gallery_image(image: tuple[str, str | None]) -> ImageMeta | None:
     return None
 
 
-async def find_gallery_image_by_event(event: MessageEvent) -> ImageMeta | None:
-    images = await get_images_from_context(event)
+async def find_gallery_image_by_event(event: MessageEvent, bot: Bot) -> ImageMeta | None:
+    images = await get_images_from_context(event, bot)
 
-    return await find_gallery_image(images[0]) if len(images) > 0 else None
+    return await find_gallery_image(images[0], bot) if len(images) > 0 else None
 
 
-async def find_gallery_images_by_event(event: MessageEvent) -> list[ImageMeta]:
-    images = await get_images_from_context(event)
+async def find_gallery_images_by_event(event: MessageEvent, bot: Bot) -> list[ImageMeta]:
+    images = await get_images_from_context(event, bot)
     found_images = []
     for image in images:
-        img = await find_gallery_image(image)
+        img = await find_gallery_image(image, bot)
         if img:
             found_images.append(img)
     return found_images
+
+
+def check_name(name: str) -> bool:
+    return not (name.startswith("-") or name.startswith("#") or name.startswith("＃") or name.strip() == "")

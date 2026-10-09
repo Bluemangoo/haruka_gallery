@@ -4,11 +4,12 @@ import mimetypes
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple
 
 import aiohttp
-from nonebot import get_bot, logger
+from nonebot import logger
 from nonebot.adapters.onebot.v11 import MessageEvent
+from nonebot.adapters.onebot.v11.bot import Bot
 
 from .config import gallery_config
 
@@ -96,6 +97,9 @@ class FileCache:
         return name
 
     def new_file(self, ext: str, filename_without_ext: Optional[str] = None, timeout=3600) -> CachedFile:
+        """
+        ext: like ".jpg"
+        """
         filename = (filename_without_ext + ext) if filename_without_ext else self._random_filename(ext)
         filepath = os.path.join(gallery_config.cache_dir, filename)
         file = CachedFile(filename, filepath, timeout=timeout)
@@ -122,23 +126,30 @@ class FileCache:
                 count += 1
         return count
 
-    async def download(self, url: str, extra: dict | None = None) -> CachedFile:
+    async def download(self, url: str, extra: dict | None = None, bot: Bot | None = None) -> CachedFile:
         if url in self.files:
             return self.files[url].renewed().update_extra(extra)
-
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, verify_ssl=False) as resp:
-                if resp.status != 200:
-                    raise Exception(f"下载文件 {os.truncate(url, 32)} 失败: {resp.status} {resp.reason}")
-                content_type = resp.headers.get("Content-Type", "")
-                ext = self._extension_from_content_type(content_type)
-                filename = self._random_filename(ext)
-                filepath = os.path.join(gallery_config.cache_dir, filename)
-                file = CachedFile(url, filepath)
-                self.files[url] = file
-                with open(filepath, "wb") as f:
-                    f.write(await resp.read())
-                return file.update_extra(extra)
+        for attempt in range(2):
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as resp:
+                    if resp.status == 400 and attempt == 0 and bot:
+                        try:
+                            logger.debug(await bot.call_api("get_rkey"))
+                        except Exception as e:
+                            logger.warning(f"尝试刷新 rkey 失败: {e}")
+                        continue
+                    if resp.status != 200:
+                        raise Exception(f"下载文件 {url[:32]}... 失败: {resp.status} {resp.reason}")
+                    content_type = resp.headers.get("Content-Type", "")
+                    ext = self._extension_from_content_type(content_type)
+                    filename = self._random_filename(ext)
+                    filepath = os.path.join(gallery_config.cache_dir, filename)
+                    file = CachedFile(url, filepath)
+                    self.files[url] = file
+                    with open(filepath, "wb") as f:
+                        f.write(await resp.read())
+                    return file.update_extra(extra)
+        assert False, "Unreachable"
 
     async def prune(self):
         current_time = datetime.now()
@@ -158,10 +169,9 @@ class FileCache:
 file_cache = FileCache()
 
 
-async def get_images_from_context(event: MessageEvent):
+async def get_images_from_context(event: MessageEvent, bot: Bot):
     images: list[Tuple[str, Optional[str]]] = []
     messages = [msg for msg in event.message]
-    bot = get_bot()
     if event.reply:
         messages.extend(event.reply.message)
     while len(messages) > 0:
@@ -200,118 +210,7 @@ async def get_images_from_context(event: MessageEvent):
     return images
 
 
-async def download_images(image_urls: list[str | Tuple[str, Optional[str]]]) -> list[CachedFile]:
-    tasks = [file_cache.download(url, {"file_id": file_id}) for url, file_id in image_urls]
+async def download_images(image_urls: list[str | Tuple[str, Optional[str]]], bot: Bot | None = None) -> list[CachedFile]:
+    tasks = [file_cache.download(url, {"file_id": file_id}, bot) for url, file_id in image_urls]
     downloaded_files = await asyncio.gather(*tasks)
-    return downloaded_files
-
-
-class ArgParser:
-    def __init__(self, s: Optional[str]):
-        self._s: str = s or ""
-        self._tokens: List[Tuple[int, int]] = []
-        self._idx: int = 0
-        self._build_tokens()
-
-    def _build_tokens(self) -> None:
-        self._tokens.clear()
-        s = self._s
-        n = len(s)
-        i = 0
-        while i < n:
-            while i < n and s[i] == " ":
-                i += 1
-            if i >= n:
-                break
-            start = i
-            while i < n and s[i] != " ":
-                i += 1
-            end = i
-            if start < end:
-                self._tokens.append((start, end))
-
-    def _current_range(self) -> Optional[Tuple[int, int]]:
-        self._skip_empty_tokens()
-        if self._idx >= len(self._tokens):
-            return None
-        return self._tokens[self._idx]
-
-    def _skip_empty_tokens(self) -> None:
-        while self._idx < len(self._tokens):
-            start, end = self._tokens[self._idx]
-            if start < end and self._s[start:end].strip() != "":
-                break
-            self._idx += 1
-
-    def peek(self, chars: Optional[int] = None) -> Optional[str]:
-        rng = self._current_range()
-        if rng is None:
-            return None
-        start, end = rng
-        token = self._s[start:end]
-        if chars is None:
-            res = token.strip()
-        else:
-            if not isinstance(chars, int) or chars <= 0:
-                return None
-            take = min(chars, end - start)
-            res = token[:take].strip()
-        return res if res != "" else None
-
-    def pop(self, chars: Optional[int] = None) -> Optional[str]:
-        rng = self._current_range()
-        if rng is None:
-            return None
-        start, end = rng
-        token = self._s[start:end]
-        if chars is None:
-            res = token.strip()
-            self._idx += 1
-            # 防守：跳过任何空 token（不太可能）
-            self._skip_empty_tokens()
-            return res if res != "" else None
-        else:
-            if not isinstance(chars, int) or chars <= 0:
-                return None
-            token_len = end - start
-            if chars >= token_len:
-                # 忽略多余，只消费整个 token
-                res = token.strip()
-                self._idx += 1
-                self._skip_empty_tokens()
-                return res if res != "" else None
-            else:
-                part = token[:chars].strip()
-                new_start = start + chars
-                # new_start < end 因为 chars < token_len
-                self._tokens[self._idx] = (new_start, end)
-                # 更新后再做一次防守性跳过（一般不跳过，但保持一致）
-                self._skip_empty_tokens()
-                return part if part != "" else None
-
-    def pop_all(self) -> str:
-        rng = self._current_range()
-        if rng is None:
-            return ""
-        start, _ = rng
-        rest = self._s[start:].strip()
-        self._idx = len(self._tokens)
-        return rest
-
-    def check_and_pop(self, expected: str) -> bool:
-        token = self.peek()
-        if token == expected:
-            self.pop()
-            return True
-        return False
-
-    def remaining_count(self) -> int:
-        self._skip_empty_tokens()
-        return max(0, len(self._tokens) - self._idx)
-
-    def __repr__(self) -> str:
-        rng = self._current_range()
-        cur = None
-        if rng:
-            cur = self._s[rng[0]:rng[1]]
-        return f"<ArgParser current={cur!r} remaining={self.remaining_count()}>"
+    return list(downloaded_files)
